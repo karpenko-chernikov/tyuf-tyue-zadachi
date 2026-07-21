@@ -37,11 +37,22 @@ from app.history import (
     snapshot_task,
 )
 from app.models import Attachment, Comment, Task
-from app.utils import format_igraetsya, format_idea_label, parse_datetime_local, parse_paste
+from app.utils import (
+    author_pill_class,
+    format_igraetsya,
+    format_idea_label,
+    parse_datetime_local,
+    parse_paste,
+    status_pill_class,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["format_size"] = format_size
+templates.env.globals["author_pill_class"] = author_pill_class
+templates.env.globals["status_pill_class"] = status_pill_class
+templates.env.globals["format_igraetsya"] = format_igraetsya
+templates.env.globals["format_idea_label"] = format_idea_label
 
 
 def _normalize_uploads(files: Optional[list[UploadFile] | UploadFile]) -> list[UploadFile]:

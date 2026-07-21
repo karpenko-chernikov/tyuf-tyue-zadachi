@@ -112,3 +112,19 @@ def format_idea_title(task) -> str:
     if task.idea_number is not None:
         return f"Идея № {task.idea_number}"
     return "Нет номера идеи"
+
+
+def author_pill_class(name: str | None) -> str:
+    """CSS-класс цветного овала для автора."""
+    key = (name or "").strip().lower().replace("ё", "е")
+    mapping = {
+        "никита": "nikita",
+        "артем": "artem",
+        "илья": "ilya",
+    }
+    return mapping.get(key, "other")
+
+
+def status_pill_class(status: str | None) -> str:
+    known = {"tg", "formulirovka", "metodkom", "igraetsya", "otklonena"}
+    return status if status in known else "other"

@@ -28,7 +28,8 @@
 </form>
 
 {% if tasks %}
-<table class="table">
+<div class="table-wrap">
+<table class="table table-tasks">
   <thead>
     <tr>
       <th>№</th>
@@ -42,21 +43,40 @@
   <tbody>
     {% for task in tasks %}
     <tr onclick="window.location='/tasks/{{ task.id }}'" class="clickable">
-      <td>{{ format_idea_label(task) }}</td>
-      <td>{{ task.title or '—' }}</td>
-      <td>{{ naznachenie_labels.get(task.naznachenie or '', '—') }}</td>
       <td>
-        {{ status_labels.get(task.status, task.status) }}
-        {% set ig = format_igraetsya(task) %}
-        {% if ig %}<div class="muted small">{{ ig }}</div>{% endif %}
+        <span class="idea-badge {% if task.idea_number is none %}idea-badge-empty{% endif %}">
+          {{ format_idea_label(task) }}
+        </span>
       </td>
-      <td>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</td>
-      <td>{{ task.author or '—' }}</td>
+      <td>
+        <span class="task-title">{{ task.title or 'Без названия' }}</span>
+      </td>
+      <td>
+        <span class="board-chip board-{{ task.naznachenie or 'none' }}">
+          {{ naznachenie_labels.get(task.naznachenie or '', '—') }}
+        </span>
+      </td>
+      <td>
+        <span class="status-pill status-{{ status_pill_class(task.status) }}">
+          {{ status_labels.get(task.status, task.status) }}
+        </span>
+        {% set ig = format_igraetsya(task) %}
+        {% if ig %}<div class="task-igraetsya">{{ ig }}</div>{% endif %}
+      </td>
+      <td class="task-date">{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</td>
+      <td>
+        {% if task.author %}
+        <span class="author-pill author-{{ author_pill_class(task.author) }}">{{ task.author }}</span>
+        {% else %}
+        <span class="muted">—</span>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
-<p class="muted">Всего: {{ tasks|length }}</p>
+</div>
+<p class="muted table-count">Всего: {{ tasks|length }}</p>
 {% else %}
 <p class="empty">Задач пока нет. <a href="/new">Добавить первую</a></p>
 {% endif %}
