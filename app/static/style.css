@@ -644,7 +644,8 @@ textarea { resize: vertical; }
 }
 .kanban-card-archived {
   background: #fdeceb;
-  border-color: #f0b4ad;
+  border-color: #e74c3c;
+  box-shadow: inset 4px 0 0 #e74c3c;
 }
 .kanban-card:active { cursor: grabbing; }
 .kanban-card-link {
@@ -680,9 +681,11 @@ textarea { resize: vertical; }
   color: #fff;
   background: #e74c3c;
   border-radius: 6px;
-  padding: 3px 7px;
+  padding: 3px 8px;
   display: inline-block;
   font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 .kanban-card-badge {
   margin-top: 8px;
