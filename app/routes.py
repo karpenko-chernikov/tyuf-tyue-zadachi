@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
 
@@ -165,6 +165,25 @@ def _default_telegram_datetime(db: Session) -> str | None:
     if last and last.telegram_datetime:
         return last.telegram_datetime.strftime("%Y-%m-%dT%H:%M")
     return None
+
+
+def _telegram_dt_minute(dt: datetime) -> datetime:
+    return dt.replace(second=0, microsecond=0)
+
+
+def _task_with_telegram_datetime(
+    db: Session, tg_dt: datetime, exclude_id: int | None = None
+) -> Task | None:
+    """Другая задача с той же датой и минутой в Telegram."""
+    start = _telegram_dt_minute(tg_dt)
+    end = start + timedelta(minutes=1)
+    query = db.query(Task).filter(
+        Task.telegram_datetime >= start,
+        Task.telegram_datetime < end,
+    )
+    if exclude_id is not None:
+        query = query.filter(Task.id != exclude_id)
+    return query.first()
 
 
 def _form_context(db: Session, **extra):
@@ -518,6 +537,23 @@ def _build_task_from_form(
     tg_dt = parse_datetime_local(telegram_datetime)
     if not tg_dt:
         raise ValueError("Укажите корректную дату и время сообщения в Telegram")
+    tg_dt = _telegram_dt_minute(tg_dt)
+
+    # При создании нельзя оставить дату/время из последней задачи без изменения
+    if task_id is None:
+        default_str = _default_telegram_datetime(db)
+        if default_str and tg_dt.strftime("%Y-%m-%dT%H:%M") == default_str:
+            raise ValueError(
+                "Измените дату и время в Telegram — сейчас стоит значение из последней задачи"
+            )
+
+    other = _task_with_telegram_datetime(db, tg_dt, exclude_id=task_id)
+    if other:
+        label = format_idea_label(other)
+        raise ValueError(
+            f"Уже есть задача ({label}) с такой же датой и временем в Telegram — "
+            f"укажите другое время"
+        )
 
     if not condition.strip():
         raise ValueError("Заполните условие задачи")

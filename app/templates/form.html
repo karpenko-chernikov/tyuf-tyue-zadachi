@@ -36,7 +36,7 @@
         <input type="datetime-local" name="telegram_datetime" required
           value="{% if f.telegram_datetime %}{{ f.telegram_datetime }}{% elif task %}{{ task.telegram_datetime.strftime('%Y-%m-%dT%H:%M') }}{% elif default_telegram_datetime %}{{ default_telegram_datetime }}{% endif %}">
         {% if not task and not f.telegram_datetime and default_telegram_datetime %}
-        <span class="hint">Подставлено из последней задачи — поправьте при необходимости</span>
+        <span class="hint">Подставлено из последней задачи — обязательно поменяйте, иначе не сохранится</span>
         {% endif %}
       </label>
     </div>
