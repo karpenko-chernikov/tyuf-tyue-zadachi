@@ -38,6 +38,12 @@ class Task(Base):
     comments = relationship(
         "Comment", back_populates="task", cascade="all, delete-orphan", order_by="Comment.created_at"
     )
+    history = relationship(
+        "TaskHistory",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskHistory.created_at.desc()",
+    )
 
 
 class Comment(Base):
@@ -51,3 +57,19 @@ class Comment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     task = relationship("Task", back_populates="comments")
+
+
+class TaskHistory(Base):
+    """Кто и что менял в задаче: до / после."""
+
+    __tablename__ = "task_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=False)
+    user = Column(String(100), nullable=False)
+    action = Column(String(50), nullable=False)  # created, updated, comment_added, comment_deleted
+    summary = Column(Text, nullable=True)
+    changes_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    task = relationship("Task", back_populates="history")

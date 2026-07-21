@@ -499,3 +499,65 @@ textarea { resize: vertical; }
 }
 .kanban-ghost { opacity: 0.4; }
 .kanban-drag { box-shadow: 0 12px 28px rgba(28, 36, 33, 0.14); }
+
+.history-list { display: flex; flex-direction: column; gap: 14px; }
+.history-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #fbfcfb;
+}
+.history-meta {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.history-summary {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: #f4f8f6;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.history-changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.history-field {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5a6b62;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.history-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.history-diff-single { grid-template-columns: 1fr; }
+.history-old, .history-new {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.history-old { background: #faf6f4; }
+.history-new { background: #f3f9f5; }
+.history-old .label, .history-new .label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a968f;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .history-diff { grid-template-columns: 1fr; }
+}

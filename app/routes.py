@@ -22,6 +22,15 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
+from app.history import (
+    action_label,
+    parse_changes,
+    record_comment_added,
+    record_comment_deleted,
+    record_created,
+    record_update,
+    snapshot_task,
+)
 from app.models import Comment, Task
 from app.utils import format_igraetsya, format_idea_label, parse_datetime_local, parse_paste
 
@@ -273,12 +282,14 @@ def api_set_status(
             "edit_url": f"/tasks/{task_id}/edit?pending_status={status}",
         }
 
+    before = snapshot_task(task)
     task.status = status
     if status != Status.IGRAETSYA.value:
         task.turnir = None
         task.turnir_year = None
         task.task_number = None
         task.etap_kk = None
+    record_update(db, task, user, before)
     db.commit()
 
     return {
@@ -474,6 +485,7 @@ def _add_initial_comments(db: Session, task: Task, authors, texts, default_user:
             continue
         author = (authors[i] if i < len(authors) else "").strip() or default_user
         db.add(Comment(task_id=task.id, text=text, author=author))
+        record_comment_added(db, task.id, default_user, author, text)
 
 
 @router.post("/tasks")
@@ -528,6 +540,7 @@ def create_task(
             etap_kk,
         )
         db.flush()
+        record_created(db, task, user)
         _add_initial_comments(db, task, comment_authors, comment_texts, user)
         db.commit()
         db.refresh(task)
@@ -595,9 +608,20 @@ def task_detail(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    task = db.query(Task).options(joinedload(Task.comments)).filter(Task.id == task_id).first()
+    task = db.query(Task).options(
+        joinedload(Task.comments),
+        joinedload(Task.history),
+    ).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    history = []
+    for entry in sorted(task.history, key=lambda e: e.created_at or datetime.min, reverse=True):
+        history.append({
+            "entry": entry,
+            "action_label": action_label(entry.action),
+            "changes": parse_changes(entry),
+        })
 
     return templates.TemplateResponse(
         request,
@@ -612,6 +636,7 @@ def task_detail(
             "format_igraetsya": format_igraetsya,
             "format_idea_label": format_idea_label,
             "authors": _author_suggestions(db),
+            "history": history,
         },
     )
 
@@ -696,6 +721,7 @@ def update_task(
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     try:
+        before = snapshot_task(task)
         _build_task_from_form(
             db,
             task_id,
@@ -717,6 +743,7 @@ def update_task(
             task_number,
             etap_kk,
         )
+        record_update(db, task, user, before)
         db.commit()
         return RedirectResponse(f"/tasks/{task_id}", status_code=303)
     except ValueError as e:
@@ -781,6 +808,7 @@ def add_comment(
         author=author.strip() or user,
     )
     db.add(comment)
+    record_comment_added(db, task_id, user, comment.author, comment.text)
     db.commit()
     return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
 
@@ -798,6 +826,7 @@ def delete_comment(
 
     comment = db.get(Comment, comment_id)
     if comment and comment.task_id == task_id:
+        record_comment_deleted(db, task_id, user, comment.author, comment.text)
         db.delete(comment)
         db.commit()
     return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)

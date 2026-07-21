@@ -107,4 +107,49 @@
     <button type="submit" class="btn primary">Добавить комментарий</button>
   </form>
 </section>
+
+<section class="card" id="history">
+  <h2>История изменений <span class="count-pill">{{ history|length }}</span></h2>
+  <p class="muted help-box">
+    Кто и когда создал задачу, менял поля, добавлял или удалял комментарии. Для правок видно «было» и «стало».
+  </p>
+
+  {% if history %}
+  <div class="history-list">
+    {% for item in history %}
+    <article class="history-item">
+      <div class="history-meta">
+        <strong>{{ item.entry.user }}</strong>
+        {{ item.action_label }}
+        <span class="muted">· {{ item.entry.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+      </div>
+      {% if item.entry.summary %}
+      <div class="history-summary pre-wrap">{{ item.entry.summary }}</div>
+      {% endif %}
+      {% if item.changes %}
+      <ul class="history-changes">
+        {% for change in item.changes %}
+        <li>
+          <div class="history-field">{{ change.label }}</div>
+          {% if item.entry.action == 'created' %}
+          <div class="history-diff history-diff-single">
+            <div class="history-new"><span class="label">Значение</span><div class="pre-wrap">{{ change.new }}</div></div>
+          </div>
+          {% else %}
+          <div class="history-diff">
+            <div class="history-old"><span class="label">Было</span><div class="pre-wrap">{{ change.old }}</div></div>
+            <div class="history-new"><span class="label">Стало</span><div class="pre-wrap">{{ change.new }}</div></div>
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">Пока пусто — история начнёт копиться с новых правок.</p>
+  {% endif %}
+</section>
 {% endblock %}
