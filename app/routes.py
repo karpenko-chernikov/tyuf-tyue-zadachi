@@ -89,6 +89,8 @@ def _form_context(db: Session, **extra):
         "form": None,
         "error": None,
         "status_hint": None,
+        "pending_status": None,
+        "cancel_url": None,
     }
     ctx.update(extra)
     return ctx
@@ -249,6 +251,28 @@ def api_set_status(
     if allowed and status not in {s.value for s in allowed}:
         raise HTTPException(status_code=400, detail="Этот статус недоступен для данной задачи")
 
+    # Для «формулировка» / «играется» статус меняем только если поля уже заполнены.
+    # Иначе открываем форму — без сохранения статус не меняется (Отмена = остаётся как было).
+    needs_edit = False
+    if status == Status.FORMULIROVKA.value and not (task.formulirovka or "").strip():
+        needs_edit = True
+    elif status == Status.IGRAETSYA.value:
+        if not (task.itogovaya_formulirovka or "").strip():
+            needs_edit = True
+        elif task.naznachenie == Naznachenie.KAPITANY.value:
+            if not task.etap_kk or not task.turnir_year:
+                needs_edit = True
+        elif not task.turnir or not task.turnir_year or not task.task_number:
+            needs_edit = True
+
+    if needs_edit:
+        return {
+            "ok": True,
+            "status_changed": False,
+            "needs_edit": True,
+            "edit_url": f"/tasks/{task_id}/edit?pending_status={status}",
+        }
+
     task.status = status
     if status != Status.IGRAETSYA.value:
         task.turnir = None
@@ -257,12 +281,12 @@ def api_set_status(
         task.etap_kk = None
     db.commit()
 
-    needs_edit = status in (Status.FORMULIROVKA.value, Status.IGRAETSYA.value)
     return {
         "ok": True,
         "status": status,
-        "needs_edit": needs_edit,
-        "edit_url": f"/tasks/{task_id}/edit?from_status={status}" if needs_edit else None,
+        "status_changed": True,
+        "needs_edit": False,
+        "edit_url": None,
     }
 
 
@@ -597,6 +621,7 @@ def edit_task_page(
     request: Request,
     task_id: int,
     db: Session = Depends(get_db),
+    pending_status: str = Query(None),
     from_status: str = Query(None),
 ):
     user = login_required(request)
@@ -607,11 +632,21 @@ def edit_task_page(
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
+    # from_status — старый параметр; pending_status — статус ещё не сохранён
+    target = pending_status or from_status
+    if target and target not in STATUS_LABELS:
+        target = None
+    if target and BOARD_STATUSES.get(task.naznachenie or ""):
+        if target not in {s.value for s in BOARD_STATUSES[task.naznachenie]}:
+            target = None
+
     hint = None
-    if from_status == Status.FORMULIROVKA.value:
-        hint = "Заполните «Формулировку перед отправлением» и сохраните."
-    elif from_status == Status.IGRAETSYA.value:
-        hint = "Заполните «Итоговую формулировку» и данные турнира, затем сохраните."
+    if target == Status.FORMULIROVKA.value:
+        hint = "Заполните «Формулировку перед отправлением» и нажмите «Сохранить». «Отмена» — статус не изменится."
+    elif target == Status.IGRAETSYA.value:
+        hint = "Заполните «Итоговую формулировку» и данные турнира, затем «Сохранить». «Отмена» — статус не изменится."
+
+    cancel_url = f"/kanban/{task.naznachenie}" if task.naznachenie else f"/tasks/{task.id}"
 
     return templates.TemplateResponse(
         request,
@@ -621,8 +656,10 @@ def edit_task_page(
             user=user,
             task=task,
             parsed=None,
+            pending_status=target,
             status_labels=_available_statuses(task.naznachenie),
             status_hint=hint,
+            cancel_url=cancel_url,
         ),
     )
 

@@ -84,7 +84,15 @@ document.querySelectorAll('.kanban-list').forEach(list => {
         }
         const data = await res.json().catch(() => ({}));
         if (data.needs_edit && data.edit_url) {
+          // Вернуть карточку на место — статус ещё не сохранён
+          evt.from.insertBefore(card, evt.from.children[evt.oldIndex] || null);
+          document.querySelectorAll('.kanban-list').forEach(col => {
+            const st = col.dataset.status;
+            const el = document.getElementById('count-' + st);
+            if (el) el.textContent = col.querySelectorAll('.kanban-card').length;
+          });
           window.location = data.edit_url;
+          return;
         }
       } catch (e) {
         alert('Ошибка сети');

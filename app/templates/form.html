@@ -71,7 +71,7 @@
         </select>
       </label>
       <label>Статус
-        {% set status_val = f.status if f.status is defined else (task.status if task else 'tg') %}
+        {% set status_val = f.status if f.status is defined else (pending_status if pending_status else (task.status if task else 'tg')) %}
         <select name="status" id="status">
           {% for val, label in status_labels.items() %}
           <option value="{{ val }}" {% if status_val == val %}selected{% endif %}>{{ label }}</option>
@@ -183,7 +183,7 @@
       <button type="submit" name="after" value="new" class="btn secondary">Сохранить и создать ещё</button>
       {% endif %}
       {% if task %}
-      <a href="/tasks/{{ task.id }}" class="btn secondary">Отмена</a>
+      <a href="{{ cancel_url or ('/tasks/' ~ task.id) }}" class="btn secondary">Отмена</a>
       {% endif %}
     </div>
   </form>
