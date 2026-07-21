@@ -24,7 +24,7 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
-from app.ai import ai_title_enabled, suggest_title
+from app.ai import ai_provider_label, ai_title_enabled, suggest_title
 from app.files import format_size, is_image_attachment, save_uploads
 from app.history import (
     action_label,
@@ -182,6 +182,7 @@ def _form_context(db: Session, **extra):
         "cancel_url": None,
         "task_files": [],
         "ai_title_enabled": ai_title_enabled(),
+        "ai_provider_label": ai_provider_label(),
     }
     ctx.update(extra)
     return ctx
@@ -419,6 +420,7 @@ def api_suggest_title(
         "ok": True,
         "title": title,
         "ai": ai_title_enabled(),
+        "provider": ai_provider_label(),
     }
 
 

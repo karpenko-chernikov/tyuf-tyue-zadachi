@@ -1,19 +1,45 @@
 """Генерация короткого названия задачи.
 
-Если задан OPENAI_API_KEY — через нейросеть (OpenAI).
-Иначе (или при ошибке) — эвристика из текста условия.
+Предпочтительно DeepSeek (дешёвый/почти бесплатный).
+Иначе OpenAI. Если ключей нет или ошибка — эвристика из текста условия.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import urllib.error
 import urllib.request
 
 from app.utils import title_from_condition
 
-DEFAULT_MODEL = "gpt-4o-mini"
+# DeepSeek: https://platform.deepseek.com — ключ бесплатно, на старте дают кредиты
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+DEEPSEEK_MODEL = "deepseek-chat"
+
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_MODEL = "gpt-4o-mini"
+
+
+def _provider() -> tuple[str, str, str] | None:
+    """Вернёт (name, api_key, url) или None."""
+    deepseek = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if deepseek:
+        return ("deepseek", deepseek, DEEPSEEK_URL)
+    openai = os.getenv("OPENAI_API_KEY", "").strip()
+    if openai:
+        return ("openai", openai, OPENAI_URL)
+    return None
+
+
+def ai_title_enabled() -> bool:
+    return _provider() is not None
+
+
+def ai_provider_label() -> str:
+    p = _provider()
+    if not p:
+        return ""
+    return "DeepSeek" if p[0] == "deepseek" else "OpenAI"
 
 
 def suggest_title(condition: str) -> str | None:
@@ -22,12 +48,13 @@ def suggest_title(condition: str) -> str | None:
     if not text:
         return fallback
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
+    provider = _provider()
+    if not provider:
         return fallback
 
+    name, api_key, url = provider
     try:
-        generated = _openai_title(text, api_key=api_key)
+        generated = _chat_title(text, api_key=api_key, url=url, provider=name)
         if generated:
             return generated
     except Exception:
@@ -35,19 +62,19 @@ def suggest_title(condition: str) -> str | None:
     return fallback
 
 
-def ai_title_enabled() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+def _model_for(provider: str) -> str:
+    if provider == "deepseek":
+        return os.getenv("DEEPSEEK_MODEL", DEEPSEEK_MODEL).strip() or DEEPSEEK_MODEL
+    return os.getenv("OPENAI_MODEL", OPENAI_MODEL).strip() or OPENAI_MODEL
 
 
-def _openai_title(condition: str, *, api_key: str) -> str | None:
-    model = os.getenv("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
-    # Не гоняем огромные условия целиком
+def _chat_title(condition: str, *, api_key: str, url: str, provider: str) -> str | None:
     snippet = condition.strip()
     if len(snippet) > 2500:
         snippet = snippet[:2500] + "…"
 
     payload = {
-        "model": model,
+        "model": _model_for(provider),
         "temperature": 0.3,
         "max_tokens": 60,
         "messages": [
@@ -69,7 +96,7 @@ def _openai_title(condition: str, *, api_key: str) -> str | None:
     }
 
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -77,7 +104,7 @@ def _openai_title(condition: str, *, api_key: str) -> str | None:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 
     raw = (
@@ -89,7 +116,6 @@ def _openai_title(condition: str, *, api_key: str) -> str | None:
     if not raw:
         return None
 
-    # На всякий случай убираем кавычки и обрезаем
     title = raw.strip(" «»\"'").splitlines()[0].strip().rstrip(".")
     if len(title) > 80:
         title = title[:77].rstrip(" ,;:") + "…"
