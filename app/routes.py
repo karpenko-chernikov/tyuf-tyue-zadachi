@@ -44,7 +44,6 @@ from app.utils import (
     parse_datetime_local,
     parse_paste,
     status_pill_class,
-    title_from_condition,
 )
 
 router = APIRouter()
@@ -399,24 +398,6 @@ def api_set_status(
     }
 
 
-@router.post("/api/suggest-title")
-def api_suggest_title(
-    request: Request,
-    condition: str = Form(""),
-):
-    user = login_required(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Нужен вход")
-
-    title = title_from_condition(condition)
-    if not title:
-        raise HTTPException(
-            status_code=400,
-            detail="Сначала заполните условие задачи",
-        )
-    return {"ok": True, "title": title}
-
-
 @router.get("/", response_class=HTMLResponse)
 def task_list(
     request: Request,
@@ -574,7 +555,7 @@ def _build_task_from_form(
 
     task = db.get(Task, task_id) if task_id else Task()
     task.idea_number = idea_num
-    task.title = title.strip() or title_from_condition(condition) or None
+    task.title = title.strip() or None
     task.condition = condition.strip() or None
     task.formulirovka = formulirovka.strip() or None
     task.itogovaya_formulirovka = itogovaya_formulirovka.strip() or None
