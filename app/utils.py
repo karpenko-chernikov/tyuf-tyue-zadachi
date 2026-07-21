@@ -97,7 +97,7 @@ def parse_paste(text: str) -> dict:
             condition = condition.replace(url, "").strip()
         condition = re.sub(r"\n{3,}", "\n\n", condition).strip() or None
 
-    naznachenie = "kapitany" if kapitany else None
+    naznachenie = "kapitany" if kapitany else "both"
 
     return {
         "idea_number": idea_number,

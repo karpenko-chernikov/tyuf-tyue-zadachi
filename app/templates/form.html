@@ -61,7 +61,7 @@
     <div class="grid-3">
       <label>Автор задачи *
         <input type="text" name="author" list="authors-list" required
-          value="{% if f.author is defined %}{{ f.author }}{% elif task %}{{ task.author or '' }}{% endif %}"
+          value="{% if f.author is defined %}{{ f.author }}{% elif task %}{{ task.author or '' }}{% else %}{{ default_task_author }}{% endif %}"
           placeholder="Кто предложил">
         <datalist id="authors-list">
           {% for a in authors %}
@@ -70,7 +70,7 @@
         </datalist>
       </label>
       <label>Назначение *
-        {% set nazn_val = f.naznachenie if f.naznachenie is defined else (task.naznachenie if task else p.naznachenie) %}
+        {% set nazn_val = f.naznachenie if f.naznachenie is defined else (task.naznachenie if task else (p.naznachenie or default_naznachenie)) %}
         <select name="naznachenie" id="naznachenie" required>
           <option value="">—</option>
           {% for val, label in naznachenie_labels.items() %}

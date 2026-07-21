@@ -96,3 +96,5 @@ BOARD_STATUSES = {
 
 AUTHORS = ["Никита", "Артём", "Илья"]
 DEFAULT_COMMENT_AUTHOR = "Илья"
+DEFAULT_TASK_AUTHOR = "Никита"
+DEFAULT_NAZNACHENIE = Naznachenie.BOTH.value
