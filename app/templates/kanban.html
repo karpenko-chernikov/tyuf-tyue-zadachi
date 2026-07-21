@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Канбан — {{ board_label }}{% endblock %}
+{% block main_class %}container container-wide{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Канбан</h1>
+  <a class="btn primary" href="/new">+ Добавить задачу</a>
+</div>
+
+<div class="board-tabs">
+  {% for val, label in boards.items() %}
+  <a href="/kanban/{{ val }}" class="board-tab {% if board == val %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<p class="muted">Перетаскивайте карточки между колонками, чтобы сменить статус.</p>
+
+<div class="kanban" id="kanban" data-board="{{ board }}">
+  {% for st in columns %}
+  <div class="kanban-col">
+    <div class="kanban-col-header">
+      <span>{{ status_short.get(st.value, st.label) }}</span>
+      <span class="count" id="count-{{ st.value }}">{{ tasks_by_status.get(st.value, [])|length }}</span>
+    </div>
+    <div class="kanban-list" data-status="{{ st.value }}">
+      {% for task in tasks_by_status.get(st.value, []) %}
+      <article class="kanban-card" data-id="{{ task.id }}" draggable="false">
+        <a href="/tasks/{{ task.id }}" class="kanban-card-link">
+          <div class="kanban-card-num">{{ format_idea_label(task) }}</div>
+          <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
+          <div class="kanban-card-meta">
+            {% if task.author %}<span>{{ task.author }}</span>{% endif %}
+            <span>{{ task.telegram_datetime.strftime('%d.%m.%Y') }}</span>
+          </div>
+          {% set ig = format_igraetsya(task) %}
+          {% if ig %}<div class="kanban-card-badge">{{ ig }}</div>{% endif %}
+        </a>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<script>
+document.querySelectorAll('.kanban-list').forEach(list => {
+  new Sortable(list, {
+    group: 'tasks',
+    animation: 150,
+    ghostClass: 'kanban-ghost',
+    dragClass: 'kanban-drag',
+    onEnd: async (evt) => {
+      const card = evt.item;
+      const taskId = card.dataset.id;
+      const newStatus = evt.to.dataset.status;
+      const oldStatus = evt.from.dataset.status;
+
+      // обновить счётчики
+      document.querySelectorAll('.kanban-list').forEach(col => {
+        const st = col.dataset.status;
+        const el = document.getElementById('count-' + st);
+        if (el) el.textContent = col.querySelectorAll('.kanban-card').length;
+      });
+
+      if (newStatus === oldStatus) return;
+
+      try {
+        const res = await fetch('/api/tasks/' + taskId + '/status', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'status=' + encodeURIComponent(newStatus),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.detail || 'Не удалось сменить статус');
+          evt.from.insertBefore(card, evt.from.children[evt.oldIndex] || null);
+          document.querySelectorAll('.kanban-list').forEach(col => {
+            const st = col.dataset.status;
+            const el = document.getElementById('count-' + st);
+            if (el) el.textContent = col.querySelectorAll('.kanban-card').length;
+          });
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (data.needs_edit && data.edit_url) {
+          window.location = data.edit_url;
+        }
+      } catch (e) {
+        alert('Ошибка сети');
+        location.reload();
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

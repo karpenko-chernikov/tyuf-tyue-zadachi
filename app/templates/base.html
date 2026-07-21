@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Задачи ТЮФ/ТЮЕ{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {% if user %}
+  <header class="header">
+    <div class="header-inner">
+      <a href="/kanban" class="logo">Задачи <span>ТЮФ / ТЮЕ</span></a>
+      <nav>
+        <a href="/kanban">Канбан</a>
+        <a href="/">Список</a>
+        <a href="/new">Добавить</a>
+        <a href="/export/txt">TXT</a>
+        <a href="/export/csv">CSV</a>
+        <a href="/settings">Настройки</a>
+      </nav>
+      <div class="user">{{ user }} · <a href="/logout">Выйти</a></div>
+    </div>
+  </header>
+  {% endif %}
+
+  <main class="{% block main_class %}container{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

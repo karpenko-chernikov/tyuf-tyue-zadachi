@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Список задач{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Задачи</h1>
+  <a class="btn primary" href="/new">+ Добавить задачу</a>
+</div>
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Поиск по тексту, автору, ссылкам">
+  <select name="naznachenie">
+    <option value="">Все назначения</option>
+    {% for val, label in naznachenie_labels.items() %}
+    <option value="{{ val }}" {% if naznachenie == val %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="status">
+    <option value="">Все статусы</option>
+    {% for val, label in status_labels.items() %}
+    <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Фильтр</button>
+  <a href="/" class="btn secondary">Сбросить</a>
+</form>
+
+{% if tasks %}
+<table class="table">
+  <thead>
+    <tr>
+      <th>№</th>
+      <th>Название</th>
+      <th>Назначение</th>
+      <th>Статус</th>
+      <th>Дата в TG</th>
+      <th>Автор</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for task in tasks %}
+    <tr onclick="window.location='/tasks/{{ task.id }}'" class="clickable">
+      <td>{{ format_idea_label(task) }}</td>
+      <td>{{ task.title or '—' }}</td>
+      <td>{{ naznachenie_labels.get(task.naznachenie or '', '—') }}</td>
+      <td>
+        {{ status_labels.get(task.status, task.status) }}
+        {% set ig = format_igraetsya(task) %}
+        {% if ig %}<div class="muted small">{{ ig }}</div>{% endif %}
+      </td>
+      <td>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</td>
+      <td>{{ task.author or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Всего: {{ tasks|length }}</p>
+{% else %}
+<p class="empty">Задач пока нет. <a href="/new">Добавить первую</a></p>
+{% endif %}
+{% endblock %}

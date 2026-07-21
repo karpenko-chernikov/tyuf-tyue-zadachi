@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Вход{% endblock %}
+{% block content %}
+<div class="login-box">
+  <h1>Вход</h1>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/login">
+    <label>Логин<input type="text" name="username" required autofocus placeholder="nikita / artem / ilya"></label>
+    <label>Пароль<input type="password" name="password" required></label>
+    <button type="submit">Войти</button>
+  </form>
+  <p class="muted small" style="margin-top:16px">
+    Пароль по умолчанию: <code>change-me</code>.<br>
+    После входа смените его в меню <strong>Настройки</strong>.
+  </p>
+</div>
+{% endblock %}

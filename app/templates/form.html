@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}{% if task %}Редактирование{% else %}Новая задача{% endif %}{% endblock %}
+{% block content %}
+{% set f = form or {} %}
+{% set p = parsed or {} %}
+<div class="page-header">
+  <h1>{% if task %}Редактирование{% else %}Новая задача{% endif %}</h1>
+  <a href="/" class="btn secondary">← К списку</a>
+</div>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+{% if status_hint %}<div class="alert success">{{ status_hint }}</div>{% endif %}
+{% if just_created %}<div class="alert success">Предыдущая задача сохранена. Заполните следующую.</div>{% endif %}
+
+{% if not task %}
+<section class="card paste-box">
+  <h2>Быстрая вставка из Telegram</h2>
+  <p class="muted">Вставьте текст сообщения — система попробует распознать номер идеи, ссылки и назначение (КК).</p>
+  <form method="post" action="/parse">
+    <textarea name="paste" rows="6" placeholder="Идея 195&#10;Оптоволокно своими руками...">{{ paste or '' }}</textarea>
+    <button type="submit" class="btn secondary">Разобрать текст</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}">
+    <div class="grid-2">
+      <label>Номер идеи
+        <input type="number" name="idea_number"
+          value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}">
+        <span class="hint">Можно оставить пустым — будет «Нет номера идеи»</span>
+      </label>
+      <label>Дата и время в Telegram *
+        <input type="datetime-local" name="telegram_datetime" required
+          value="{% if f.telegram_datetime %}{{ f.telegram_datetime }}{% elif task %}{{ task.telegram_datetime.strftime('%Y-%m-%dT%H:%M') }}{% elif default_telegram_datetime %}{{ default_telegram_datetime }}{% endif %}">
+        {% if not task and not f.telegram_datetime and default_telegram_datetime %}
+        <span class="hint">Подставлено из последней задачи — поправьте при необходимости</span>
+        {% endif %}
+      </label>
+    </div>
+
+    <label>Название
+      <input type="text" name="title"
+        value="{% if f.title is defined %}{{ f.title }}{% elif task %}{{ task.title or '' }}{% else %}{{ p.title or '' }}{% endif %}">
+    </label>
+
+    <label>Условие *
+      <span class="hint">для КК варианты ответа тоже пишите сюда</span>
+      <textarea name="condition" rows="8" required>{% if f.condition is defined %}{{ f.condition }}{% elif task %}{{ task.condition or '' }}{% else %}{{ p.condition or '' }}{% endif %}</textarea>
+    </label>
+
+    <div class="grid-3">
+      <label>Автор задачи *
+        <input type="text" name="author" list="authors-list" required
+          value="{% if f.author is defined %}{{ f.author }}{% elif task %}{{ task.author or '' }}{% endif %}"
+          placeholder="Кто предложил">
+        <datalist id="authors-list">
+          {% for a in authors %}
+          <option value="{{ a }}"></option>
+          {% endfor %}
+        </datalist>
+      </label>
+      <label>Назначение *
+        {% set nazn_val = f.naznachenie if f.naznachenie is defined else (task.naznachenie if task else p.naznachenie) %}
+        <select name="naznachenie" id="naznachenie" required>
+          <option value="">—</option>
+          {% for val, label in naznachenie_labels.items() %}
+          <option value="{{ val }}" {% if nazn_val == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Статус
+        {% set status_val = f.status if f.status is defined else (task.status if task else 'tg') %}
+        <select name="status" id="status">
+          {% for val, label in status_labels.items() %}
+          <option value="{{ val }}" {% if status_val == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="grid-2">
+      <label>Проверена своими руками
+        {% set prov_val = f.proverena if f.proverena is defined else (task.proverena if task else '') %}
+        <select name="proverena">
+          <option value="">—</option>
+          {% for val, label in proverena_labels.items() %}
+          <option value="{{ val }}" {% if prov_val == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% set video_checked = f.has_video if f.has_video is defined else (task.has_video if task else p.has_video) %}
+      <label class="checkbox-label">
+        <input type="checkbox" name="has_video" value="true" {% if video_checked %}checked{% endif %}>
+        Среди ссылок есть видео
+      </label>
+    </div>
+
+    <label>Ссылки и источники
+      <span class="hint">статьи, YouTube, Instagram — по одной ссылке на строку</span>
+      <textarea name="sources" rows="3" placeholder="https://...">{% if f.sources is defined %}{{ f.sources }}{% elif task %}{{ task.sources or '' }}{% else %}{{ p.sources or '' }}{% endif %}</textarea>
+    </label>
+
+    <input type="hidden" name="video_url"
+      value="{% if f.video_url is defined %}{{ f.video_url }}{% elif task %}{{ task.video_url or '' }}{% else %}{{ p.video_url or '' }}{% endif %}">
+
+    {% set show_formulirovka = status_val == 'formulirovka' or status_val == 'metodkom' or status_val == 'igraetsya' %}
+    <div id="formulirovka-fields" class="{% if not show_formulirovka %}hidden{% endif %}">
+      <label>Формулировка перед отправлением {% if status_val == 'formulirovka' %}*{% endif %}
+        <textarea name="formulirovka" rows="6" id="formulirovka-input"
+          {% if status_val == 'formulirovka' %}required{% endif %}>{% if f.formulirovka is defined %}{{ f.formulirovka }}{% elif task %}{{ task.formulirovka or '' }}{% endif %}</textarea>
+      </label>
+    </div>
+
+    {% set show_igraetsya = status_val == 'igraetsya' %}
+    <div id="igraetsya-fields" class="{% if not show_igraetsya %}hidden{% endif %}">
+      <h3>Играется в турнире</h3>
+      <label>Итоговая формулировка *
+        <textarea name="itogovaya_formulirovka" rows="6" required
+          id="itogovaya-input">{% if f.itogovaya_formulirovka is defined %}{{ f.itogovaya_formulirovka }}{% elif task %}{{ task.itogovaya_formulirovka or '' }}{% endif %}</textarea>
+      </label>
+      <div id="igraetsya-regular" class="grid-3 {% if nazn_val == 'kapitany' %}hidden{% endif %}">
+        {% set turnir_val = f.turnir if f.turnir is defined else (task.turnir if task else '') %}
+        <label>Турнир *
+          <select name="turnir" id="turnir-select">
+            <option value="">—</option>
+            {% for val, label in turnir_labels.items() %}
+            <option value="{{ val }}" {% if turnir_val == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Год *
+          <input type="number" name="turnir_year"
+            value="{% if f.turnir_year is defined %}{{ f.turnir_year }}{% elif task and task.turnir_year %}{{ task.turnir_year }}{% endif %}">
+        </label>
+        <label>Номер задачи *
+          <input type="number" name="task_number"
+            value="{% if f.task_number is defined %}{{ f.task_number }}{% elif task and task.task_number %}{{ task.task_number }}{% endif %}">
+        </label>
+      </div>
+      <div id="igraetsya-kk" class="grid-2 {% if nazn_val != 'kapitany' %}hidden{% endif %}">
+        {% set etap_val = f.etap_kk if f.etap_kk is defined else (task.etap_kk if task else '') %}
+        <label>Этап *
+          <select name="etap_kk">
+            <option value="">—</option>
+            {% for val, label in etap_labels.items() %}
+            <option value="{{ val }}" {% if etap_val == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Год *
+          <input type="number" name="turnir_year"
+            value="{% if f.turnir_year is defined %}{{ f.turnir_year }}{% elif task and task.turnir_year %}{{ task.turnir_year }}{% endif %}">
+        </label>
+      </div>
+    </div>
+
+    {% if not task %}
+    <div class="comments-create">
+      <h3>Комментарии</h3>
+      <p class="muted">Можно сразу сохранить отзывы — у каждого свой автор. Необязательно.</p>
+      <div id="comment-rows">
+        {% set draft_comments = f.comments if f.comments else [{'author': user, 'text': ''}] %}
+        {% for c in draft_comments %}
+        <div class="comment-row">
+          <label>Автор комментария
+            <input type="text" name="comment_authors" list="authors-list" value="{{ c.author }}" placeholder="Кто пишет">
+          </label>
+          <label>Текст
+            <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…">{{ c.text }}</textarea>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn secondary" id="add-comment-row">+ Ещё комментарий</button>
+    </div>
+    {% endif %}
+
+    <div class="actions">
+      <button type="submit" class="btn primary">Сохранить</button>
+      {% if not task %}
+      <button type="submit" name="after" value="new" class="btn secondary">Сохранить и создать ещё</button>
+      {% endif %}
+      {% if task %}
+      <a href="/tasks/{{ task.id }}" class="btn secondary">Отмена</a>
+      {% endif %}
+    </div>
+  </form>
+</section>
+
+<script>
+const nazn = document.getElementById('naznachenie');
+const status = document.getElementById('status');
+const formulirovkaFields = document.getElementById('formulirovka-fields');
+const formulirovkaInput = document.getElementById('formulirovka-input');
+const igraetsyaFields = document.getElementById('igraetsya-fields');
+const igraetsyaRegular = document.getElementById('igraetsya-regular');
+const igraetsyaKk = document.getElementById('igraetsya-kk');
+const itogovayaInput = document.getElementById('itogovaya-input');
+
+function syncFields() {
+  const isKk = nazn.value === 'kapitany';
+  const st = status.value;
+  const showForm = st === 'formulirovka' || st === 'metodkom' || st === 'igraetsya';
+  const showIgra = st === 'igraetsya';
+
+  formulirovkaFields.classList.toggle('hidden', !showForm);
+  if (formulirovkaInput) formulirovkaInput.required = st === 'formulirovka';
+
+  igraetsyaFields.classList.toggle('hidden', !showIgra);
+  igraetsyaRegular.classList.toggle('hidden', isKk);
+  igraetsyaKk.classList.toggle('hidden', !isKk);
+  if (itogovayaInput) itogovayaInput.required = showIgra;
+
+  igraetsyaRegular.querySelectorAll('input, select').forEach(el => {
+    el.disabled = isKk || !showIgra;
+  });
+  igraetsyaKk.querySelectorAll('input, select').forEach(el => {
+    el.disabled = !isKk || !showIgra;
+  });
+}
+
+nazn.addEventListener('change', syncFields);
+status.addEventListener('change', syncFields);
+syncFields();
+
+const addBtn = document.getElementById('add-comment-row');
+if (addBtn) {
+  addBtn.addEventListener('click', () => {
+    const rows = document.getElementById('comment-rows');
+    const row = document.createElement('div');
+    row.className = 'comment-row';
+    row.innerHTML = `
+      <label>Автор комментария
+        <input type="text" name="comment_authors" list="authors-list" placeholder="Кто пишет">
+      </label>
+      <label>Текст
+        <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…"></textarea>
+      </label>`;
+    rows.appendChild(row);
+  });
+}
+</script>
+{% endblock %}

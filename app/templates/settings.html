@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Настройки</h1>
+  <a href="/" class="btn secondary">← К списку</a>
+</div>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+{% if success %}<div class="alert success">{{ success }}</div>{% endif %}
+
+<section class="card">
+  <h2>Смена пароля</h2>
+  <p class="muted">Вы вошли как <strong>{{ user }}</strong> (логин: <code>{{ username }}</code>). Новый пароль сохранится на этом компьютере.</p>
+  <form method="post" action="/settings/password">
+    <label>Текущий пароль
+      <input type="password" name="old_password" required autocomplete="current-password">
+    </label>
+    <label>Новый пароль
+      <input type="password" name="new_password" required autocomplete="new-password" minlength="4">
+    </label>
+    <label>Ещё раз новый пароль
+      <input type="password" name="new_password2" required autocomplete="new-password" minlength="4">
+    </label>
+    <button type="submit" class="btn primary">Сменить пароль</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Логины для входа</h2>
+  <ul>
+    <li><code>nikita</code> — Никита</li>
+    <li><code>artem</code> — Артём</li>
+    <li><code>ilya</code> — Илья</li>
+  </ul>
+  <p class="muted">Каждый меняет свой пароль после входа на этой странице.</p>
+</section>
+{% endblock %}

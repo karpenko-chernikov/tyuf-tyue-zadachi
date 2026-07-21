@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{% if task.idea_number %}Идея № {{ task.idea_number }}{% else %}Нет номера идеи{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>
+    {% if task.idea_number %}Идея № {{ task.idea_number }}{% else %}Нет номера идеи{% endif %}
+    {% if task.title %}<span class="subtitle">{{ task.title }}</span>{% endif %}
+  </h1>
+  <div class="actions-inline">
+    <a href="/new" class="btn primary">+ Создать ещё</a>
+    <a href="/tasks/{{ task.id }}/edit" class="btn secondary">Редактировать</a>
+    <form method="post" action="/tasks/{{ task.id }}/delete" onsubmit="return confirm('Удалить задачу?')">
+      <button type="submit" class="btn danger">Удалить</button>
+    </form>
+  </div>
+</div>
+
+{% if just_created %}
+<div class="alert success">Задача сохранена. Можно сразу <a href="/new"><strong>создать ещё одну</strong></a>.</div>
+{% endif %}
+
+<div class="meta-grid">
+  <div><span class="label">Номер идеи</span>{{ format_idea_label(task) }}</div>
+  <div><span class="label">Назначение</span>{{ naznachenie_labels.get(task.naznachenie or '', '—') }}</div>
+  <div><span class="label">Статус</span>{{ status_labels.get(task.status, task.status) }}</div>
+  <div><span class="label">Дата в Telegram</span>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</div>
+  <div><span class="label">Автор</span>{{ task.author or '—' }}</div>
+  <div><span class="label">Проверена</span>{{ proverena_labels.get(task.proverena or '', '—') }}</div>
+  <div><span class="label">Есть видео</span>{% if task.has_video %}Да{% else %}Нет{% endif %}</div>
+  {% set ig = format_igraetsya(task) %}
+  {% if ig %}<div class="full"><span class="label">Играется</span>{{ ig }}</div>{% endif %}
+</div>
+
+<section class="card">
+  <h2>Условие</h2>
+  <div class="pre-wrap">{{ task.condition or '—' }}</div>
+</section>
+
+{% if task.formulirovka %}
+<section class="card">
+  <h2>Формулировка перед отправлением</h2>
+  <div class="pre-wrap">{{ task.formulirovka }}</div>
+</section>
+{% endif %}
+
+{% if task.itogovaya_formulirovka %}
+<section class="card">
+  <h2>Итоговая формулировка</h2>
+  <div class="pre-wrap">{{ task.itogovaya_formulirovka }}</div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Ссылки и источники</h2>
+  {% if task.sources %}
+  <ul class="links">
+    {% for src in task.sources.splitlines() %}
+    {% if src.strip() %}
+    <li><a href="{{ src.strip() }}" target="_blank" rel="noopener">{{ src.strip() }}</a></li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Пока нет. Добавьте через «Редактировать».</p>
+  {% endif %}
+</section>
+
+<section class="card" id="comments">
+  <h2>Комментарии <span class="count-pill">{{ task.comments|length }}</span></h2>
+  <p class="muted help-box">
+    Лента обсуждения: отзывы, реплики, решения. У каждого комментария свой автор и время.
+  </p>
+
+  {% if task.comments %}
+  <div class="comments">
+    {% for c in task.comments %}
+    <div class="comment">
+      <div class="comment-meta">
+        <strong>{{ c.author }}</strong>
+        · {{ c.created_at.strftime('%d.%m.%Y %H:%M') }}
+        <form method="post" action="/tasks/{{ task.id }}/comments/{{ c.id }}/delete" class="comment-delete"
+              onsubmit="return confirm('Удалить этот комментарий?')">
+          <button type="submit" class="btn-link-danger">Удалить</button>
+        </form>
+      </div>
+      <div class="comment-text">{{ c.text }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">Комментариев пока нет.</p>
+  {% endif %}
+
+  <form method="post" action="/tasks/{{ task.id }}/comments" class="comment-form">
+    <h3>Новый комментарий</h3>
+    <label>Кто пишет
+      <input type="text" name="author" list="comment-authors" required value="{{ user }}" placeholder="Имя">
+      <datalist id="comment-authors">
+        {% for a in authors %}
+        <option value="{{ a }}"></option>
+        {% endfor %}
+      </datalist>
+    </label>
+    <label>Текст
+      <textarea name="text" rows="4" required placeholder="Отзыв, обсуждение…"></textarea>
+    </label>
+    <button type="submit" class="btn primary">Добавить комментарий</button>
+  </form>
+</section>
+{% endblock %}

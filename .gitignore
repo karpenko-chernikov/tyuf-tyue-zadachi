@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Данные и секреты
+.env
+data/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

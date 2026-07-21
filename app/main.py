@@ -1,0 +1,61 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+
+from sqlalchemy import inspect, text
+
+from app.database import Base, SessionLocal, engine
+from app.models import Task
+from app.routes import router
+
+load_dotenv()
+
+Base.metadata.create_all(bind=engine)
+
+
+def _ensure_columns():
+    """Добавляем новые колонки в SQLite, если их ещё нет."""
+    insp = inspect(engine)
+    cols = {c["name"] for c in insp.get_columns("tasks")}
+    with engine.begin() as conn:
+        if "formulirovka" not in cols:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN formulirovka TEXT"))
+        if "itogovaya_formulirovka" not in cols:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN itogovaya_formulirovka TEXT"))
+
+
+_ensure_columns()
+
+
+def _migrate_tyuf_to_both():
+    """Старое назначение «только ТЮФ» больше не используем → «ТЮФ и ТЮЕ»."""
+    db = SessionLocal()
+    try:
+        updated = (
+            db.query(Task)
+            .filter(Task.naznachenie == "tyuf")
+            .update({Task.naznachenie: "both"}, synchronize_session=False)
+        )
+        if updated:
+            db.commit()
+    finally:
+        db.close()
+
+
+_migrate_tyuf_to_both()
+
+app = FastAPI(title="Задачи ТЮФ/ТЮЕ")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY", "change-me-to-random-string"),
+    max_age=60 * 60 * 24 * 30,
+)
+app.include_router(router)
+
+static_dir = Path(__file__).parent / "static"
+static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
