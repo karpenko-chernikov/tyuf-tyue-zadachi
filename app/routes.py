@@ -166,10 +166,15 @@ def login_page(request: Request):
 
 
 @router.post("/login")
-def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
     from app.auth import verify_user
 
-    display = verify_user(username, password)
+    display = verify_user(db, username, password)
     if not display:
         return templates.TemplateResponse(
             request, "login.html", {"error": "Неверный логин или пароль"}, status_code=401
@@ -208,6 +213,7 @@ def settings_password(
     old_password: str = Form(...),
     new_password: str = Form(...),
     new_password2: str = Form(...),
+    db: Session = Depends(get_db),
 ):
     user = login_required(request)
     if not user:
@@ -226,7 +232,7 @@ def settings_password(
         return templates.TemplateResponse(request, "settings.html", ctx, status_code=400)
 
     try:
-        change_password(username, old_password, new_password)
+        change_password(db, username, old_password, new_password)
         ctx["success"] = "Пароль изменён. При следующем входе используйте новый."
     except ValueError as e:
         ctx["error"] = str(e)

@@ -11,7 +11,7 @@
 
 <section class="card">
   <h2>Смена пароля</h2>
-  <p class="muted">Вы вошли как <strong>{{ user }}</strong> (логин: <code>{{ username }}</code>). Новый пароль сохранится на этом компьютере.</p>
+  <p class="muted">Вы вошли как <strong>{{ user }}</strong> (логин: <code>{{ username }}</code>). Новый пароль сохранится в базе как хеш — даже в файле БД его нельзя прочитать.</p>
   <form method="post" action="/settings/password">
     <label>Текущий пароль
       <input type="password" name="old_password" required autocomplete="current-password">
@@ -33,6 +33,6 @@
     <li><code>artem</code> — Артём</li>
     <li><code>ilya</code> — Илья</li>
   </ul>
-  <p class="muted">Каждый меняет свой пароль после входа на этой странице.</p>
+  <p class="muted">Каждый меняет <strong>свой</strong> пароль после входа. Чужой пароль никто не видит — в базе хранится только хеш.</p>
 </section>
 {% endblock %}

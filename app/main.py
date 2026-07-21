@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import inspect, text
 
 from app.database import Base, SessionLocal, engine
+from app.auth import ensure_users
 from app.models import Task
 from app.routes import router
 
@@ -20,6 +21,8 @@ Base.metadata.create_all(bind=engine)
 def _ensure_columns():
     """Добавляем новые колонки в SQLite, если их ещё нет."""
     insp = inspect(engine)
+    if "tasks" not in insp.get_table_names():
+        return
     cols = {c["name"] for c in insp.get_columns("tasks")}
     with engine.begin() as conn:
         if "formulirovka" not in cols:
@@ -47,6 +50,17 @@ def _migrate_tyuf_to_both():
 
 
 _migrate_tyuf_to_both()
+
+
+def _seed_users():
+    db = SessionLocal()
+    try:
+        ensure_users(db)
+    finally:
+        db.close()
+
+
+_seed_users()
 
 app = FastAPI(title="Задачи ТЮФ/ТЮЕ")
 app.add_middleware(

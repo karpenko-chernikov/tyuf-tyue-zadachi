@@ -46,6 +46,18 @@ class Task(Base):
     )
 
 
+class User(Base):
+    """Учётки для входа. Пароль хранится только как хеш."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    display_name = Column(String(100), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Comment(Base):
     __tablename__ = "comments"
 
