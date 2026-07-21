@@ -320,6 +320,7 @@ a:hover { text-decoration: underline; }
 .status-metodkom { background: #dce5f5; color: #334978; }
 .status-igraetsya { background: #d4efe5; color: #146347; }
 .status-otklonena { background: #f3dede; color: #7d3535; }
+.status-archived { background: #e74c3c; color: #fff; }
 .status-other { background: #eef0ef; color: var(--muted); }
 
 /* Авторы — овалы в одной палитре, без кислотности */
@@ -611,6 +612,17 @@ textarea { resize: vertical; }
   border-radius: 14px;
   padding: 10px;
   min-height: 280px;
+}
+.kanban-col-archive {
+  background: #fdeceb;
+  border-color: #f0b4ad;
+}
+.kanban-col-archive .kanban-col-header {
+  color: #8b1e14;
+}
+.kanban-col-archive .kanban-col-header .count {
+  background: #fad2cd;
+  color: #8b1e14;
 }
 .kanban-col-header {
   display: flex;

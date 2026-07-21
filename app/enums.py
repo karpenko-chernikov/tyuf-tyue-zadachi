@@ -21,6 +21,7 @@ class Status(str, Enum):
     METODKOM = "metodkom"
     IGRAETSYA = "igraetsya"
     OTKLONENA = "otklonena"
+    ARCHIVED = "archived"
 
     @property
     def label(self) -> str:
@@ -30,6 +31,7 @@ class Status(str, Enum):
             "metodkom": "Отправлена в методкомиссию",
             "igraetsya": "Играется в турнире",
             "otklonena": "Отклонена",
+            "archived": "Архив: больше не предлагаем",
         }[self.value]
 
     @property
@@ -40,6 +42,7 @@ class Status(str, Enum):
             "metodkom": "Методкомиссия",
             "igraetsya": "Играется",
             "otklonena": "Отклонена",
+            "archived": "Архив",
         }[self.value]
 
 
@@ -83,15 +86,28 @@ METODKOM_ONLY_FOR = {Naznachenie.BOTH.value}
 
 # Колонки канбана по доске
 BOARD_STATUSES = {
-    "tyue": [Status.TG, Status.FORMULIROVKA, Status.IGRAETSYA, Status.OTKLONENA],
+    "tyue": [
+        Status.TG,
+        Status.FORMULIROVKA,
+        Status.IGRAETSYA,
+        Status.OTKLONENA,
+        Status.ARCHIVED,
+    ],
     "both": [
         Status.TG,
         Status.FORMULIROVKA,
         Status.METODKOM,
         Status.IGRAETSYA,
         Status.OTKLONENA,
+        Status.ARCHIVED,
     ],
-    "kapitany": [Status.TG, Status.FORMULIROVKA, Status.IGRAETSYA, Status.OTKLONENA],
+    "kapitany": [
+        Status.TG,
+        Status.FORMULIROVKA,
+        Status.IGRAETSYA,
+        Status.OTKLONENA,
+        Status.ARCHIVED,
+    ],
 }
 
 AUTHORS = ["Никита", "Артём", "Илья"]

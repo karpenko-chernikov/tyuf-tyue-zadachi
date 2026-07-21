@@ -169,5 +169,5 @@ def author_pill_class(name: str | None) -> str:
 
 
 def status_pill_class(status: str | None) -> str:
-    known = {"tg", "formulirovka", "metodkom", "igraetsya", "otklonena"}
+    known = {"tg", "formulirovka", "metodkom", "igraetsya", "otklonena", "archived"}
     return status if status in known else "other"

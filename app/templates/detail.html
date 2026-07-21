@@ -16,7 +16,7 @@
   </div>
 </div>
 
-{% if task.archived %}
+{% if task.status == 'archived' or task.archived %}
 <div class="alert archive-alert">Архив: задачу больше не предлагаем</div>
 {% endif %}
 
@@ -24,14 +24,13 @@
 <div class="alert success">Задача сохранена. Можно сразу <a href="/new"><strong>создать ещё одну</strong></a>.</div>
 {% endif %}
 
-<div class="meta-grid {% if task.archived %}meta-grid-archived{% endif %}">
+<div class="meta-grid">
   <div><span class="label">Номер идеи</span>{{ format_idea_label(task) }}</div>
   <div><span class="label">Назначение</span>{{ naznachenie_labels.get(task.naznachenie or '', '—') }}</div>
   <div><span class="label">Статус</span>{{ status_labels.get(task.status, task.status) }}</div>
   <div><span class="label">Дата в Telegram</span>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</div>
   <div><span class="label">Автор</span>{{ task.author or '—' }}</div>
   <div><span class="label">Проверена</span>{{ proverena_labels.get(task.proverena or '', '—') }}</div>
-  <div><span class="label">Архив</span>{% if task.archived %}<span class="archive-pill">Да — больше не предлагаем</span>{% else %}Нет{% endif %}</div>
   <div><span class="label">Есть видео</span>{% if task.has_video %}Да{% else %}Нет{% endif %}</div>
   {% set ig = format_igraetsya(task) %}
   {% if ig %}<div class="full"><span class="label">Играется</span>{{ ig }}</div>{% endif %}

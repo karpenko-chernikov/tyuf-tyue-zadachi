@@ -98,12 +98,6 @@
       </select>
     </label>
 
-    {% set archived_checked = f.archived if f.archived is defined else (task.archived if task else false) %}
-    <label class="checkbox-label checkbox-archive">
-      <input type="checkbox" name="archived" value="true" {% if archived_checked %}checked{% endif %}>
-      Архив: задачу больше не предлагаем
-    </label>
-
     <label>Ссылки и источники
       <span class="hint">статьи, YouTube, Instagram — по одной ссылке на строку</span>
       <textarea name="sources" rows="3" placeholder="https://...">{% if f.sources is defined %}{{ f.sources }}{% elif task %}{{ task.sources or '' }}{% else %}{{ p.sources or '' }}{% endif %}</textarea>

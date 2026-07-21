@@ -87,6 +87,9 @@ def _field_has_value(task: Task, field: str) -> bool:
 
 def _fields_to_clear_on_status(task: Task, new_status: str) -> list[tuple[str, str]]:
     """Какие заполненные поля нужно сбросить при переходе в new_status."""
+    # В архив данные не трогаем — задачу просто откладываем
+    if new_status == Status.ARCHIVED.value:
+        return []
     to_clear: list[tuple[str, str]] = []
     if new_status != Status.IGRAETSYA.value:
         for field, label in _IGRAETSYA_ONLY_FIELDS:
@@ -98,6 +101,8 @@ def _fields_to_clear_on_status(task: Task, new_status: str) -> list[tuple[str, s
 
 
 def _apply_status_field_clears(task: Task, new_status: str) -> None:
+    if new_status == Status.ARCHIVED.value:
+        return
     if new_status != Status.IGRAETSYA.value:
         task.itogovaya_formulirovka = None
         task.turnir = None
@@ -408,6 +413,7 @@ def api_set_status(
 
     before = snapshot_task(task)
     task.status = status
+    task.archived = status == Status.ARCHIVED.value
     _apply_status_field_clears(task, status)
     record_update(db, task, user, before)
     db.commit()
@@ -420,6 +426,7 @@ def api_set_status(
         "needs_confirm": False,
         "edit_url": None,
         "cleared": bool(to_clear),
+        "archived": task.archived,
     }
 
 
@@ -528,7 +535,6 @@ def _build_task_from_form(
     status: str,
     proverena: str,
     has_video: bool,
-    archived: bool,
     video_url: str,
     sources: str,
     telegram_datetime: str,
@@ -607,7 +613,7 @@ def _build_task_from_form(
     task.status = status or Status.TG.value
     task.proverena = proverena or None
     task.has_video = video_flag
-    task.archived = bool(archived)
+    task.archived = task.status == Status.ARCHIVED.value
     task.video_url = video_clean
     task.sources = sources_clean
     task.telegram_datetime = tg_dt
@@ -659,7 +665,6 @@ async def create_task(
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
     has_video: bool = Form(False),
-    archived: str = Form(""),
     video_url: str = Form(""),
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
@@ -678,8 +683,6 @@ async def create_task(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    archived_flag = archived.lower() in {"true", "1", "on", "yes"}
-
     try:
         task = _build_task_from_form(
             db,
@@ -692,7 +695,6 @@ async def create_task(
             status,
             proverena,
             has_video,
-            archived_flag,
             video_url,
             sources,
             telegram_datetime,
@@ -742,7 +744,6 @@ async def create_task(
             "status": status,
             "proverena": proverena,
             "has_video": has_video,
-            "archived": archived_flag,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,
@@ -882,7 +883,6 @@ async def update_task(
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
     has_video: bool = Form(False),
-    archived: str = Form(""),
     video_url: str = Form(""),
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
@@ -902,8 +902,6 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    archived_flag = archived.lower() in {"true", "1", "on", "yes"}
-
     try:
         before = snapshot_task(task)
         _build_task_from_form(
@@ -917,7 +915,6 @@ async def update_task(
             status,
             proverena,
             has_video,
-            archived_flag,
             video_url,
             sources,
             telegram_datetime,
@@ -950,7 +947,6 @@ async def update_task(
             "status": status,
             "proverena": proverena,
             "has_video": has_video,
-            "archived": archived_flag,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,

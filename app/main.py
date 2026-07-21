@@ -54,6 +54,29 @@ def _migrate_tyuf_to_both():
 _migrate_tyuf_to_both()
 
 
+def _migrate_archived_status():
+    """Флаг archived → статус «archived», чтобы задачи попали в колонку Архив."""
+    db = SessionLocal()
+    try:
+        updated = (
+            db.query(Task)
+            .filter(Task.archived.is_(True), Task.status != "archived")
+            .update({Task.status: "archived"}, synchronize_session=False)
+        )
+        synced = (
+            db.query(Task)
+            .filter(Task.status == "archived", Task.archived.is_(False))
+            .update({Task.archived: True}, synchronize_session=False)
+        )
+        if updated or synced:
+            db.commit()
+    finally:
+        db.close()
+
+
+_migrate_archived_status()
+
+
 def _seed_users():
     db = SessionLocal()
     try:

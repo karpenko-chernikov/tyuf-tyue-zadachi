@@ -21,20 +21,17 @@
 
 <div class="kanban" id="kanban" data-board="{{ board }}">
   {% for st in columns %}
-  <div class="kanban-col">
+  <div class="kanban-col {% if st.value == 'archived' %}kanban-col-archive{% endif %}">
     <div class="kanban-col-header">
       <span>{{ status_short.get(st.value, st.label) }}</span>
       <span class="count" id="count-{{ st.value }}">{{ tasks_by_status.get(st.value, [])|length }}</span>
     </div>
     <div class="kanban-list" data-status="{{ st.value }}">
       {% for task in tasks_by_status.get(st.value, []) %}
-      <article class="kanban-card {% if task.archived %}kanban-card-archived{% endif %}" data-id="{{ task.id }}" data-archived="{% if task.archived %}1{% else %}0{% endif %}" draggable="false">
+      <article class="kanban-card {% if task.status == 'archived' %}kanban-card-archived{% endif %}" data-id="{{ task.id }}" draggable="false">
         <a href="/tasks/{{ task.id }}" class="kanban-card-link">
           <div class="kanban-card-num">{{ format_idea_label(task) }}</div>
-          <div class="kanban-card-title">
-            {{ task.title or 'Без названия' }}
-            {% if task.archived %}<span class="archive-pill">Архив</span>{% endif %}
-          </div>
+          <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
           <div class="kanban-card-meta">
             {% if task.author %}<span>{{ task.author }}</span>{% endif %}
             <span>{{ task.telegram_datetime.strftime('%d.%m.%Y') }}</span>
@@ -120,6 +117,7 @@ document.querySelectorAll('.kanban-list').forEach(list => {
           const badge = card.querySelector('.kanban-card-badge');
           if (badge) badge.remove();
         }
+        card.classList.toggle('kanban-card-archived', newStatus === 'archived');
       } catch (e) {
         alert('Ошибка сети');
         location.reload();
