@@ -37,6 +37,59 @@ from app.utils import format_igraetsya, format_idea_label, parse_datetime_local,
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
+# Поля, которые очищаем при уходе со статуса «играется»
+_IGRAETSYA_ONLY_FIELDS = (
+    ("itogovaya_formulirovka", "Итоговая формулировка"),
+    ("turnir", "Турнир"),
+    ("turnir_year", "Год турнира"),
+    ("task_number", "Номер задачи"),
+    ("etap_kk", "Этап КК"),
+)
+
+
+def _field_has_value(task: Task, field: str) -> bool:
+    value = getattr(task, field, None)
+    if value is None:
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    return True
+
+
+def _fields_to_clear_on_status(task: Task, new_status: str) -> list[tuple[str, str]]:
+    """Какие заполненные поля нужно сбросить при переходе в new_status."""
+    to_clear: list[tuple[str, str]] = []
+    if new_status != Status.IGRAETSYA.value:
+        for field, label in _IGRAETSYA_ONLY_FIELDS:
+            if _field_has_value(task, field):
+                to_clear.append((field, label))
+    if new_status == Status.TG.value and _field_has_value(task, "formulirovka"):
+        to_clear.append(("formulirovka", "Формулировка перед отправлением"))
+    return to_clear
+
+
+def _apply_status_field_clears(task: Task, new_status: str) -> None:
+    if new_status != Status.IGRAETSYA.value:
+        task.itogovaya_formulirovka = None
+        task.turnir = None
+        task.turnir_year = None
+        task.task_number = None
+        task.etap_kk = None
+    if new_status == Status.TG.value:
+        task.formulirovka = None
+
+
+def _confirm_message(new_status: str, to_clear: list[tuple[str, str]]) -> str:
+    status_name = STATUS_LABELS.get(new_status, new_status)
+    lines = [
+        f"При переносе в «{status_name}» будут удалены данные:",
+        "",
+    ]
+    for _, label in to_clear:
+        lines.append(f"• {label}")
+    lines.extend(["", "Вас всё устраивает?"])
+    return "\n".join(lines)
+
 
 def _author_suggestions(db: Session):
     names = set(AUTHORS)
@@ -237,6 +290,7 @@ def api_set_status(
     request: Request,
     task_id: int,
     status: str = Form(...),
+    confirm: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = login_required(request)
@@ -279,16 +333,24 @@ def api_set_status(
             "ok": True,
             "status_changed": False,
             "needs_edit": True,
+            "needs_confirm": False,
             "edit_url": f"/tasks/{task_id}/edit?pending_status={status}",
+        }
+
+    to_clear = _fields_to_clear_on_status(task, status)
+    if to_clear and confirm not in ("1", "true", "yes"):
+        return {
+            "ok": True,
+            "status_changed": False,
+            "needs_edit": False,
+            "needs_confirm": True,
+            "message": _confirm_message(status, to_clear),
+            "clear_fields": [label for _, label in to_clear],
         }
 
     before = snapshot_task(task)
     task.status = status
-    if status != Status.IGRAETSYA.value:
-        task.turnir = None
-        task.turnir_year = None
-        task.task_number = None
-        task.etap_kk = None
+    _apply_status_field_clears(task, status)
     record_update(db, task, user, before)
     db.commit()
 
@@ -297,7 +359,9 @@ def api_set_status(
         "status": status,
         "status_changed": True,
         "needs_edit": False,
+        "needs_confirm": False,
         "edit_url": None,
+        "cleared": bool(to_clear),
     }
 
 
@@ -461,11 +525,8 @@ def _build_task_from_form(
         else:
             task.etap_kk = None
     else:
-        # поля турнира только для статуса «играется»
-        task.turnir = None
-        task.turnir_year = None
-        task.task_number = None
-        task.etap_kk = None
+        # при откате статуса лишние поля сбрасываем
+        _apply_status_field_clears(task, status)
 
     if task_id is None:
         db.add(task)
