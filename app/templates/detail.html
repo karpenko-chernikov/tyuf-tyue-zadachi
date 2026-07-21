@@ -164,4 +164,31 @@
   <p class="muted">Пока пусто — история начнёт копиться с новых правок.</p>
   {% endif %}
 </section>
+
+<script>
+(function () {
+  const key = 'scroll:' + location.pathname;
+  const saved = sessionStorage.getItem(key);
+  if (saved !== null) {
+    sessionStorage.removeItem(key);
+    const y = parseInt(saved, 10);
+    if (!Number.isNaN(y)) {
+      const go = () => window.scrollTo(0, y);
+      go();
+      requestAnimationFrame(go);
+      setTimeout(go, 50);
+      setTimeout(go, 200);
+      window.addEventListener('load', go, { once: true });
+    }
+  }
+
+  document.querySelectorAll(
+    '.comment-form, .comment-delete, #comments .inline-form, #comments .file-chip form'
+  ).forEach((form) => {
+    form.addEventListener('submit', () => {
+      sessionStorage.setItem(key, String(window.scrollY));
+    });
+  });
+})();
+</script>
 {% endblock %}

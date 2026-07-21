@@ -947,7 +947,7 @@ async def add_comment(
 
     # Можно: только текст, только файлы, или и то и другое
     if not text_clean and not has_files:
-        return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
+        return RedirectResponse(f"/tasks/{task_id}", status_code=303)
 
     comment = Comment(
         task_id=task_id,
@@ -971,7 +971,7 @@ async def add_comment(
     ):
         record_file_added(db, task_id, user, att.filename, for_comment=True)
     db.commit()
-    return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
+    return RedirectResponse(f"/tasks/{task_id}", status_code=303)
 
 
 @router.post("/tasks/{task_id}/comments/{comment_id}/delete")
@@ -990,7 +990,7 @@ def delete_comment(
         record_comment_deleted(db, task_id, user, comment.author, comment.text)
         db.delete(comment)
         db.commit()
-    return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
+    return RedirectResponse(f"/tasks/{task_id}", status_code=303)
 
 
 @router.get("/files/{attachment_id}")
