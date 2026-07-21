@@ -27,11 +27,46 @@ def guess_title(text: str, idea_number) -> str | None:
         if IDEA_RE.match(line):
             rest = IDEA_RE.sub("", line).strip(" .:-—")
             if rest:
-                return rest[:500]
+                return title_from_condition(rest)
             continue
         if not line.startswith("http") and len(line) > 3:
-            return line[:500]
+            return title_from_condition(line)
     return None
+
+
+def title_from_condition(condition: str, max_len: int = 72) -> str | None:
+    """Короткое название по тексту условия, если поле названия пустое."""
+    if not condition or not str(condition).strip():
+        return None
+
+    lines: list[str] = []
+    for raw in str(condition).strip().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("http"):
+            continue
+        if IDEA_RE.match(line):
+            rest = IDEA_RE.sub("", line).strip(" .:-—")
+            if rest:
+                lines.append(rest)
+            continue
+        lines.append(line)
+    if not lines:
+        return None
+
+    blob = re.sub(r"\s+", " ", " ".join(lines)).strip(" «»\"'")
+    # Берём первое предложение, если оно не слишком короткое
+    sentence = re.split(r"(?<=[.!?…])\s+", blob, maxsplit=1)[0].strip()
+    if len(sentence) >= 12:
+        blob = sentence
+
+    if len(blob) <= max_len:
+        return blob
+
+    cut = blob[: max_len + 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    cut = cut.rstrip(" ,;:.-—")
+    return (cut + "…") if cut else blob[:max_len]
 
 
 def strip_idea_header(text: str) -> str:

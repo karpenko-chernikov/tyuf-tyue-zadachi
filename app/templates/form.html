@@ -42,6 +42,7 @@
     </div>
 
     <label>Название
+      <span class="hint">если пусто — коротко подставится из условия</span>
       <input type="text" name="title"
         value="{% if f.title is defined %}{{ f.title }}{% elif task %}{{ task.title or '' }}{% else %}{{ p.title or '' }}{% endif %}">
     </label>
