@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Список задач{% endblock %}
 {% block content %}
+{% set qs_base = 'q=' ~ (q|urlencode) ~ '&naznachenie=' ~ (naznachenie|urlencode) ~ '&status=' ~ (status_filter|urlencode) %}
+{% if sort == 'tg' and order == 'asc' %}
+  {% set tg_next_order = 'desc' %}
+  {% set tg_arrow = '↑' %}
+{% elif sort == 'tg' %}
+  {% set tg_next_order = 'asc' %}
+  {% set tg_arrow = '↓' %}
+{% else %}
+  {% set tg_next_order = 'desc' %}
+  {% set tg_arrow = '' %}
+{% endif %}
 <div class="page-header">
   <h1>Задачи</h1>
   <a class="btn primary" href="/new">+ Добавить задачу</a>
@@ -20,11 +31,15 @@
     <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select>
+  {% if sort %}
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="order" value="{{ order }}">
+  {% endif %}
   <button type="submit" class="btn secondary">Фильтр</button>
   <a href="/" class="btn secondary">Сбросить</a>
   <span class="filters-export muted">Выгрузка по фильтру:</span>
-  <a class="btn secondary" href="/export/txt?q={{ q|urlencode }}&naznachenie={{ naznachenie|urlencode }}&status={{ status_filter|urlencode }}">TXT</a>
-  <a class="btn secondary" href="/export/csv?q={{ q|urlencode }}&naznachenie={{ naznachenie|urlencode }}&status={{ status_filter|urlencode }}">CSV</a>
+  <a class="btn secondary" href="/export/txt?{{ qs_base }}">TXT</a>
+  <a class="btn secondary" href="/export/csv?{{ qs_base }}">CSV</a>
 </form>
 
 {% if tasks %}
@@ -36,7 +51,14 @@
       <th>Название</th>
       <th>Назначение</th>
       <th>Статус</th>
-      <th>Дата в TG</th>
+      <th>
+        <a class="th-sort {% if sort == 'tg' %}is-active{% endif %}"
+           href="/?{{ qs_base }}&sort=tg&order={{ tg_next_order }}"
+           title="Сортировать по дате в Telegram">
+          Дата в TG
+          {% if tg_arrow %}<span class="th-sort-arrow">{{ tg_arrow }}</span>{% endif %}
+        </a>
+      </th>
       <th>Автор</th>
     </tr>
   </thead>

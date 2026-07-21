@@ -404,12 +404,31 @@ def task_list(
     q: str = Query(None),
     naznachenie: str = Query(None),
     status: str = Query(None),
+    sort: str = Query(None),
+    order: str = Query(None),
 ):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, q, naznachenie, status).all()
+    query = _filter_tasks(db, q, naznachenie, status)
+    sort_key = (sort or "").strip().lower()
+    order_key = (order or "").strip().lower()
+    if order_key not in ("asc", "desc"):
+        order_key = "desc"
+
+    if sort_key == "tg":
+        query = query.order_by(None)
+        if order_key == "asc":
+            query = query.order_by(Task.telegram_datetime.asc(), Task.id.asc())
+        else:
+            query = query.order_by(Task.telegram_datetime.desc(), Task.id.desc())
+        active_order = order_key
+    else:
+        sort_key = ""
+        active_order = ""
+
+    tasks = query.all()
     return templates.TemplateResponse(
         request,
         "list.html",
@@ -419,6 +438,8 @@ def task_list(
             "q": q or "",
             "naznachenie": naznachenie or "",
             "status_filter": status or "",
+            "sort": sort_key,
+            "order": active_order,
             "naznachenie_labels": NAZNACHENIE_LABELS,
             "status_labels": STATUS_LABELS,
             "format_igraetsya": format_igraetsya,
