@@ -8,6 +8,8 @@ from app.enums import (
     NAZNACHENIE_LABELS,
     STATUS_LABELS,
     PROVERENA_LABELS,
+    TURNIR_LABELS,
+    ETAP_LABELS,
 )
 from app.models import Task
 from app.utils import format_igraetsya, format_idea_label
@@ -105,8 +107,14 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
         "Дата в Telegram",
         "Автор",
         "Условие",
+        "Формулировка перед отправлением",
+        "Итоговая формулировка",
         "Источники",
         "Комментарии",
+        "Турнир",
+        "Год",
+        "Номер задачи",
+        "Этап КК",
         "Играется",
     ])
 
@@ -124,8 +132,14 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             _dt(task.telegram_datetime),
             task.author or "",
             task.condition or "",
+            task.formulirovka or "",
+            task.itogovaya_formulirovka or "",
             (task.sources or "").replace("\n", " "),
             comments,
+            TURNIR_LABELS.get(task.turnir or "", task.turnir or ""),
+            task.turnir_year or "",
+            task.task_number or "",
+            ETAP_LABELS.get(task.etap_kk or "", task.etap_kk or ""),
             format_igraetsya(task) or "",
         ])
 
