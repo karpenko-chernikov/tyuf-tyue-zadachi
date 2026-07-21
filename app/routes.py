@@ -24,7 +24,7 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
-from app.files import format_size, save_uploads
+from app.files import format_size, is_image_attachment, save_uploads
 from app.history import (
     action_label,
     parse_changes,
@@ -49,6 +49,7 @@ from app.utils import (
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["format_size"] = format_size
+templates.env.globals["is_image_attachment"] = is_image_attachment
 templates.env.globals["author_pill_class"] = author_pill_class
 templates.env.globals["status_pill_class"] = status_pill_class
 templates.env.globals["format_igraetsya"] = format_igraetsya
@@ -997,6 +998,7 @@ def download_file(
     request: Request,
     attachment_id: int,
     db: Session = Depends(get_db),
+    download: str = Query(None),
 ):
     user = login_required(request)
     if not user:
@@ -1006,14 +1008,18 @@ def download_file(
     if not att:
         raise HTTPException(status_code=404, detail="Файл не найден")
 
-    # RFC 5987 для кириллицы в имени файла
     quoted = quote(att.filename)
+    force_download = download in ("1", "true", "yes")
+    as_image = is_image_attachment(att) and not force_download
+    disposition = "attachment" if force_download or not as_image else "inline"
     headers = {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{quoted}",
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quoted}",
+        "Cache-Control": "private, max-age=3600",
     }
+    media = att.content_type or ("image/jpeg" if as_image else "application/octet-stream")
     return Response(
         content=bytes(att.data),
-        media_type=att.content_type or "application/octet-stream",
+        media_type=media,
         headers=headers,
     )
 

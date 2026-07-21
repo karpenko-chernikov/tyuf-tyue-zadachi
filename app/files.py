@@ -72,3 +72,14 @@ def format_size(n: int) -> str:
     if n < 1024 * 1024:
         return f"{n / 1024:.1f} КБ"
     return f"{n / (1024 * 1024):.1f} МБ"
+
+
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
+
+
+def is_image_attachment(att) -> bool:
+    ctype = (getattr(att, "content_type", None) or "").lower()
+    if ctype.startswith("image/"):
+        return True
+    name = (getattr(att, "filename", None) or "").lower()
+    return any(name.endswith(ext) for ext in _IMAGE_EXTENSIONS)

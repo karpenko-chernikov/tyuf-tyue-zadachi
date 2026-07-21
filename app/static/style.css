@@ -721,6 +721,33 @@ textarea { resize: vertical; }
   border: 1px solid var(--line);
   border-radius: 12px;
 }
+.file-chip-image {
+  align-items: flex-start;
+}
+.file-preview {
+  display: block;
+  flex: 1 1 220px;
+  max-width: 420px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #eef2f0;
+  line-height: 0;
+}
+.file-preview:hover { text-decoration: none; opacity: 0.96; }
+.file-preview img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  background: #f4f7f5;
+}
+.file-list-compact .file-preview {
+  max-width: 280px;
+}
+.file-list-compact .file-preview img {
+  max-height: 220px;
+}
 .file-chip-icon {
   width: 36px;
   height: 36px;
@@ -739,6 +766,10 @@ textarea { resize: vertical; }
   flex-direction: column;
   gap: 2px;
 }
+.file-chip-image .file-chip-body {
+  flex: 1 1 160px;
+  align-self: center;
+}
 .file-chip-name {
   font-weight: 600;
   font-size: 14px;
@@ -755,6 +786,7 @@ textarea { resize: vertical; }
   flex-wrap: wrap;
   gap: 6px;
   margin-left: auto;
+  align-self: center;
 }
 .inline-form { display: inline; margin: 0; }
 

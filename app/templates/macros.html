@@ -25,22 +25,29 @@
 {% if items %}
 <ul class="file-list{% if compact %} file-list-compact{% endif %}">
   {% for a in items %}
-  <li class="file-chip">
+  {% set is_img = is_image_attachment(a) %}
+  <li class="file-chip{% if is_img %} file-chip-image{% endif %}">
+    {% if is_img %}
+    <a class="file-preview" href="/files/{{ a.id }}" target="_blank" rel="noopener" title="Открыть полностью">
+      <img src="/files/{{ a.id }}" alt="{{ a.filename }}" loading="lazy">
+    </a>
+    {% else %}
     <span class="file-chip-icon" aria-hidden="true">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
       </svg>
     </span>
+    {% endif %}
     <div class="file-chip-body">
-      <a class="file-chip-name" href="/files/{{ a.id }}">{{ a.filename }}</a>
+      <a class="file-chip-name" href="/files/{{ a.id }}{% if not is_img %}?download=1{% endif %}" {% if is_img %}target="_blank" rel="noopener"{% endif %}>{{ a.filename }}</a>
       <span class="file-chip-meta">
         {{ format_size(a.size) }}
         {% if a.uploaded_by %} · {{ a.uploaded_by }}{% endif %}
       </span>
     </div>
     <div class="file-chip-actions">
-      <a class="btn btn-sm secondary" href="/files/{{ a.id }}">Скачать</a>
+      <a class="btn btn-sm secondary" href="/files/{{ a.id }}?download=1">Скачать</a>
       <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
             onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
         <button type="submit" class="btn btn-sm danger">Удалить</button>
