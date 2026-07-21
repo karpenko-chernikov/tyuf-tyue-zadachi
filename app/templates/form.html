@@ -88,22 +88,15 @@
       </label>
     </div>
 
-    <div class="grid-2">
-      <label>Проверена своими руками
-        {% set prov_val = f.proverena if f.proverena is defined else (task.proverena if task else '') %}
-        <select name="proverena">
-          <option value="">—</option>
-          {% for val, label in proverena_labels.items() %}
-          <option value="{{ val }}" {% if prov_val == val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      {% set video_checked = f.has_video if f.has_video is defined else (task.has_video if task else p.has_video) %}
-      <label class="checkbox-label">
-        <input type="checkbox" name="has_video" value="true" {% if video_checked %}checked{% endif %}>
-        Среди ссылок есть видео
-      </label>
-    </div>
+    <label>Проверена своими руками
+      {% set prov_val = f.proverena if f.proverena is defined else (task.proverena if task else '') %}
+      <select name="proverena">
+        <option value="">—</option>
+        {% for val, label in proverena_labels.items() %}
+        <option value="{{ val }}" {% if prov_val == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
 
     <label>Ссылки и источники
       <span class="hint">статьи, YouTube, Instagram — по одной ссылке на строку</span>
