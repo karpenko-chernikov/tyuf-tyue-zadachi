@@ -517,6 +517,28 @@ textarea { resize: vertical; }
 
 .actions { display: flex; gap: 8px; margin-top: 12px; }
 .actions-inline { display: flex; gap: 8px; align-items: center; }
+.title-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 6px;
+}
+.title-row input {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+.title-row .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-self: stretch;
+}
+.title-field .hint { display: block; margin-bottom: 0; }
+@media (max-width: 640px) {
+  .title-row { flex-direction: column; }
+  .title-row .btn { width: 100%; }
+}
+
 
 .hidden { display: none !important; }
 .paste-box { margin-bottom: 16px; }

@@ -41,19 +41,19 @@
       </label>
     </div>
 
-    <label>Название
-      {% if ai_title_enabled %}
-      <span class="hint">если пусто — нейросеть придумает короткое по условию</span>
-      {% else %}
-      <span class="hint">если пусто — коротко подставится из условия (для нейросети добавьте OPENAI_API_KEY в .env)</span>
-      {% endif %}
-      <input type="text" name="title"
-        value="{% if f.title is defined %}{{ f.title }}{% elif task %}{{ task.title or '' }}{% else %}{{ p.title or '' }}{% endif %}">
+    <label class="title-field">Название
+      <span class="hint">можно написать самому или нажать «Сгенерировать» по тексту условия</span>
+      <div class="title-row">
+        <input type="text" name="title" id="title-input"
+          value="{% if f.title is defined %}{{ f.title }}{% elif task %}{{ task.title or '' }}{% else %}{{ p.title or '' }}{% endif %}"
+          placeholder="Короткое понятное название">
+        <button type="button" class="btn secondary" id="suggest-title-btn">Сгенерировать</button>
+      </div>
     </label>
 
     <label>Условие *
       <span class="hint">для КК варианты ответа тоже пишите сюда</span>
-      <textarea name="condition" rows="8" required>{% if f.condition is defined %}{{ f.condition }}{% elif task %}{{ task.condition or '' }}{% else %}{{ p.condition or '' }}{% endif %}</textarea>
+      <textarea name="condition" id="condition-input" rows="8" required>{% if f.condition is defined %}{{ f.condition }}{% elif task %}{{ task.condition or '' }}{% else %}{{ p.condition or '' }}{% endif %}</textarea>
     </label>
 
     <div class="field-block">
@@ -236,6 +236,45 @@ function syncFields() {
 nazn.addEventListener('change', syncFields);
 status.addEventListener('change', syncFields);
 syncFields();
+
+const suggestBtn = document.getElementById('suggest-title-btn');
+const titleInput = document.getElementById('title-input');
+const conditionInput = document.getElementById('condition-input');
+if (suggestBtn && titleInput && conditionInput) {
+  suggestBtn.addEventListener('click', async () => {
+    const condition = conditionInput.value.trim();
+    if (!condition) {
+      alert('Сначала заполните условие');
+      conditionInput.focus();
+      return;
+    }
+    if (titleInput.value.trim() && !confirm('Заменить текущее название?')) {
+      return;
+    }
+    const prev = suggestBtn.textContent;
+    suggestBtn.disabled = true;
+    suggestBtn.textContent = 'Думаю…';
+    try {
+      const res = await fetch('/api/suggest-title', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'condition=' + encodeURIComponent(condition),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || 'Не удалось сгенерировать название');
+        return;
+      }
+      titleInput.value = data.title || '';
+      titleInput.focus();
+    } catch (e) {
+      alert('Ошибка сети');
+    } finally {
+      suggestBtn.disabled = false;
+      suggestBtn.textContent = prev;
+    }
+  });
+}
 
 const addBtn = document.getElementById('add-comment-row');
 if (addBtn) {

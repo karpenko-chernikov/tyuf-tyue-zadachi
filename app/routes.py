@@ -400,6 +400,28 @@ def api_set_status(
     }
 
 
+@router.post("/api/suggest-title")
+def api_suggest_title(
+    request: Request,
+    condition: str = Form(""),
+):
+    user = login_required(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Нужен вход")
+
+    title = suggest_title(condition)
+    if not title:
+        raise HTTPException(
+            status_code=400,
+            detail="Сначала заполните условие задачи",
+        )
+    return {
+        "ok": True,
+        "title": title,
+        "ai": ai_title_enabled(),
+    }
+
+
 @router.get("/", response_class=HTMLResponse)
 def task_list(
     request: Request,
