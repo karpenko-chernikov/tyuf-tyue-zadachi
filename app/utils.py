@@ -34,8 +34,45 @@ def guess_title(text: str, idea_number) -> str | None:
     return None
 
 
-def title_from_condition(condition: str, max_len: int = 72) -> str | None:
-    """Короткое название по тексту условия, если поле названия пустое."""
+_FILLER_RE = re.compile(
+    r"^(?:"
+    r"попробуйте\s+(?:придумать\s+)?"
+    r"|придумайте\s+"
+    r"|нужно\s+(?:придумать\s+)?"
+    r"|необходимо\s+"
+    r"|следует\s+"
+    r"|задание[:\s]+"
+    r")",
+    re.IGNORECASE,
+)
+
+_ACTION_RE = re.compile(
+    r"\b(распознать|определить|измерить|найти|построить|собрать|исследовать|"
+    r"сравнить|оценить|проверить|создать|разработать|вычислить|обнаружить|"
+    r"объяснить|придумать|смоделировать|воспроизвести)\b",
+    re.IGNORECASE,
+)
+
+
+def _fit_title(text: str, max_len: int) -> str:
+    text = re.sub(r"\s+", " ", text).strip(" «»\"'.,;")
+    if len(text) <= max_len:
+        return text
+    cut = text[: max_len + 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:.-—") + "…"
+
+
+def _capitalize_title(text: str) -> str:
+    text = text.strip()
+    if not text:
+        return text
+    return text[0].upper() + text[1:]
+
+
+def title_from_condition(condition: str, max_len: int = 58) -> str | None:
+    """Короткое смысловое название по тексту условия (без нейросети)."""
     if not condition or not str(condition).strip():
         return None
 
@@ -54,19 +91,54 @@ def title_from_condition(condition: str, max_len: int = 72) -> str | None:
         return None
 
     blob = re.sub(r"\s+", " ", " ".join(lines)).strip(" «»\"'")
-    # Берём первое предложение, если оно не слишком короткое
-    sentence = re.split(r"(?<=[.!?…])\s+", blob, maxsplit=1)[0].strip()
-    if len(sentence) >= 12:
-        blob = sentence
+    blob = blob.rstrip(").]")
 
-    if len(blob) <= max_len:
-        return blob
+    # Суть часто после двоеточия / тире
+    for sep in (":", "—", "–"):
+        if sep not in blob:
+            continue
+        left, right = blob.split(sep, 1)
+        right = right.strip(" ).]")
+        right = re.sub(r"\bли\s+ли\b", "ли", right, flags=re.I)
+        right = right.split(" или ")[0].strip()
+        if len(right) < 8:
+            continue
+        action_matches = list(_ACTION_RE.finditer(left))
+        preferred = [m for m in action_matches if m.group(1).lower() not in {"придумать", "создать"}]
+        action_m = preferred[-1] if preferred else (action_matches[-1] if action_matches else None)
+        right_title = _capitalize_title(right)
+        # «случайно ли расположены точки» → «случайно ли точки»
+        right_short = re.sub(
+            r"^(случайно|произвольно)\s+ли\s+расположен[а-я]*\s+(?:ли\s+)?",
+            r"\1 ли ",
+            right,
+            flags=re.I,
+        ).strip()
+        right_short = re.sub(r"\s+ли\s+ли\s+", " ли ", right_short)
+        if "точк" in right_short.lower() and "картин" not in right_short.lower() and "картин" in left.lower():
+            right_short = right_short.rstrip(".") + " на картинке"
+        if len(right_short) >= 8:
+            right_title = _capitalize_title(right_short)
+        if action_m:
+            action = action_m.group(1).lower()
+            rest = right_title[0].lower() + right_title[1:] if right_title else ""
+            candidate = f"{_capitalize_title(action)}, {rest}"
+        else:
+            candidate = right_title
+        return _fit_title(candidate, max_len)
 
-    cut = blob[: max_len + 1]
-    if " " in cut:
-        cut = cut.rsplit(" ", 1)[0]
-    cut = cut.rstrip(" ,;:.-—")
-    return (cut + "…") if cut else blob[:max_len]
+    # Без двоеточия: срезаем вводные и берём действие + хвост
+    cleaned = _FILLER_RE.sub("", blob).strip()
+    cleaned = re.sub(r"^(?:способ|метод)\s+", "", cleaned, flags=re.I).strip()
+    action_m = _ACTION_RE.search(cleaned)
+    if action_m:
+        rest = cleaned[action_m.start() :].strip()
+        # обрезаем длинные «с помощью… / по картинке с большим…»
+        rest = re.split(r",\s*(?:если|когда|чтобы)\s+", rest, maxsplit=1)[0]
+        return _fit_title(_capitalize_title(rest), max_len)
+
+    sentence = re.split(r"(?<=[.!?…])\s+", cleaned, maxsplit=1)[0].strip()
+    return _fit_title(_capitalize_title(sentence or cleaned), max_len)
 
 
 def strip_idea_header(text: str) -> str:

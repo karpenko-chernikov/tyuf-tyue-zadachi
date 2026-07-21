@@ -1,27 +1,34 @@
 """Генерация короткого названия задачи через DeepSeek.
 
 DeepSeek — основной провайдер. OpenAI только как запасной вариант.
-Если ключей нет или ошибка API — эвристика из текста условия.
+Если ключей нет или ошибка API — смысловая эвристика из текста условия.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.request
+from dataclasses import dataclass
 
 from app.utils import title_from_condition
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
-# Запасной вариант, если DeepSeek недоступен
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_MODEL = "gpt-4o-mini"
 
 
+@dataclass
+class TitleSuggestion:
+    title: str
+    source: str  # ai | fallback
+    warning: str | None = None
+
+
 def _provider() -> tuple[str, str, str] | None:
-    """Всегда предпочитаем DeepSeek."""
     deepseek = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if deepseek:
         return ("deepseek", deepseek, DEEPSEEK_URL)
@@ -43,23 +50,48 @@ def ai_provider_label() -> str:
 
 
 def suggest_title(condition: str) -> str | None:
-    fallback = title_from_condition(condition)
+    result = suggest_title_result(condition)
+    return result.title if result else None
+
+
+def suggest_title_result(condition: str) -> TitleSuggestion | None:
     text = (condition or "").strip()
+    fallback = title_from_condition(text)
     if not text:
-        return fallback
+        return TitleSuggestion(fallback, "fallback") if fallback else None
 
     provider = _provider()
     if not provider:
-        return fallback
+        return TitleSuggestion(fallback, "fallback") if fallback else None
 
     name, api_key, url = provider
     try:
         generated = _chat_title(text, api_key=api_key, url=url, provider=name)
         if generated:
-            return generated
+            return TitleSuggestion(generated, "ai")
+    except urllib.error.HTTPError as e:
+        warning = None
+        if e.code == 402:
+            warning = "DeepSeek: нет баланса на аккаунте — сделано короткое название без нейросети"
+        elif e.code in (401, 403):
+            warning = "DeepSeek: проблема с ключом — сделано короткое название без нейросети"
+        else:
+            warning = f"DeepSeek недоступен ({e.code}) — сделано короткое название без нейросети"
+        if fallback:
+            return TitleSuggestion(fallback, "fallback", warning)
+        return None
     except Exception:
-        pass
-    return fallback
+        if fallback:
+            return TitleSuggestion(
+                fallback,
+                "fallback",
+                "Нейросеть недоступна — сделано короткое название по тексту",
+            )
+        return None
+
+    if fallback:
+        return TitleSuggestion(fallback, "fallback")
+    return None
 
 
 def _model_for(provider: str) -> str:
@@ -75,22 +107,22 @@ def _chat_title(condition: str, *, api_key: str, url: str, provider: str) -> str
 
     payload = {
         "model": _model_for(provider),
-        "temperature": 0.3,
-        "max_tokens": 60,
+        "temperature": 0.4,
+        "max_tokens": 40,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "Ты придумываешь короткие понятные названия для идей задач "
-                    "научных турниров (ТЮФ/ТЮЕ). "
-                    "Ответь только названием на русском, без кавычек и точки в конце. "
-                    "Длина — примерно 4–10 слов, максимум 70 символов. "
-                    "Не пиши «Идея», номера и пояснения."
+                    "Придумай короткое название идеи задачи научного турнира. "
+                    "Только суть, 3–8 слов на русском. "
+                    "Не копируй начало условия и не используй «Попробуйте», «Нужно», «Придумайте». "
+                    "Пример: «Распознать, случайны ли точки на картинке». "
+                    "Ответ — только название, без кавычек и точки."
                 ),
             },
             {
                 "role": "user",
-                "content": f"Условие задачи:\n\n{snippet}",
+                "content": f"Условие:\n{snippet}",
             },
         ],
     }
@@ -117,6 +149,7 @@ def _chat_title(condition: str, *, api_key: str, url: str, provider: str) -> str
         return None
 
     title = raw.strip(" «»\"'").splitlines()[0].strip().rstrip(".")
-    if len(title) > 80:
-        title = title[:77].rstrip(" ,;:") + "…"
+    # если модель всё же вернула простыню — не принимаем
+    if len(title) > 80 or title.lower().startswith(("попробуйте", "нужно", "придумайте")):
+        return None
     return title or None

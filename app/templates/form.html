@@ -267,6 +267,9 @@ if (suggestBtn && titleInput && conditionInput) {
       }
       titleInput.value = data.title || '';
       titleInput.focus();
+      if (data.warning) {
+        alert(data.warning);
+      }
     } catch (e) {
       alert('Ошибка сети');
     } finally {

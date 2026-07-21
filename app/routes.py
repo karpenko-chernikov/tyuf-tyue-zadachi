@@ -24,7 +24,7 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
-from app.ai import ai_provider_label, ai_title_enabled, suggest_title
+from app.ai import ai_provider_label, ai_title_enabled, suggest_title, suggest_title_result
 from app.files import format_size, is_image_attachment, save_uploads
 from app.history import (
     action_label,
@@ -410,15 +410,17 @@ def api_suggest_title(
     if not user:
         raise HTTPException(status_code=401, detail="Нужен вход")
 
-    title = suggest_title(condition)
-    if not title:
+    result = suggest_title_result(condition)
+    if not result or not result.title:
         raise HTTPException(
             status_code=400,
             detail="Сначала заполните условие задачи",
         )
     return {
         "ok": True,
-        "title": title,
+        "title": result.title,
+        "source": result.source,
+        "warning": result.warning,
         "ai": ai_title_enabled(),
         "provider": ai_provider_label(),
     }
