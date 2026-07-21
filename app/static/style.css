@@ -209,13 +209,25 @@ a:hover { text-decoration: underline; }
 }
 .table tbody tr:nth-child(odd) td { background: #ffffff; }
 .table tbody tr:nth-child(even) td { background: #f3f7f5; }
+.table tbody tr.row-archived td {
+  background: #fdeceb !important;
+}
+.table tbody tr.row-archived:hover td {
+  background: #fad8d4 !important;
+}
 .table tr:last-child td { border-bottom: none; }
 .table tr.clickable { cursor: pointer; transition: background .12s; }
 .table tr.clickable:hover td {
   background: #fff8ef !important;
 }
+.table tr.clickable.row-archived:hover td {
+  background: #fad8d4 !important;
+}
 .table tr.clickable:hover td:first-child {
   box-shadow: inset 3px 0 0 #0f6b5c;
+}
+.table tr.clickable.row-archived:hover td:first-child {
+  box-shadow: inset 3px 0 0 #c0392b;
 }
 .table-count { margin-top: 12px; }
 
@@ -525,11 +537,40 @@ textarea { resize: vertical; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-top: 28px;
+  padding-top: 8px;
   color: var(--ink);
   font-weight: 500;
 }
 .checkbox-label input { width: auto; margin: 0; }
+.checkbox-archive {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #f0b4ad;
+  background: #fdeceb;
+  color: #8b1e14;
+  font-weight: 600;
+}
+
+.archive-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e74c3c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.alert.archive-alert {
+  background: #fdeceb;
+  border-color: #f0b4ad;
+  color: #8b1e14;
+  font-weight: 600;
+}
 
 .board-tabs {
   display: flex;
@@ -601,6 +642,10 @@ textarea { resize: vertical; }
   box-shadow: var(--shadow);
   cursor: grab;
 }
+.kanban-card-archived {
+  background: #fdeceb;
+  border-color: #f0b4ad;
+}
 .kanban-card:active { cursor: grabbing; }
 .kanban-card-link {
   display: block;
@@ -615,6 +660,7 @@ textarea { resize: vertical; }
   font-weight: 700;
   margin-bottom: 4px;
 }
+.kanban-card-archived .kanban-card-num { color: #c0392b; }
 .kanban-card-title {
   font-size: 14px;
   font-weight: 600;
@@ -627,6 +673,16 @@ textarea { resize: vertical; }
   flex-wrap: wrap;
   font-size: 12px;
   color: var(--muted);
+}
+.kanban-card-archive {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #fff;
+  background: #e74c3c;
+  border-radius: 6px;
+  padding: 3px 7px;
+  display: inline-block;
+  font-weight: 700;
 }
 .kanban-card-badge {
   margin-top: 8px;

@@ -64,7 +64,7 @@
   </thead>
   <tbody>
     {% for task in tasks %}
-    <tr onclick="window.location='/tasks/{{ task.id }}'" class="clickable">
+    <tr onclick="window.location='/tasks/{{ task.id }}'" class="clickable {% if task.archived %}row-archived{% endif %}">
       <td>
         <span class="idea-badge {% if task.idea_number is none %}idea-badge-empty{% endif %}">
           {{ format_idea_label(task) }}
@@ -72,6 +72,7 @@
       </td>
       <td>
         <span class="task-title">{{ task.title or 'Без названия' }}</span>
+        {% if task.archived %}<span class="archive-pill">Архив</span>{% endif %}
       </td>
       <td>
         <span class="board-chip board-{{ task.naznachenie or 'none' }}">

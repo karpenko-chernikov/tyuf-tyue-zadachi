@@ -28,7 +28,7 @@
     </div>
     <div class="kanban-list" data-status="{{ st.value }}">
       {% for task in tasks_by_status.get(st.value, []) %}
-      <article class="kanban-card" data-id="{{ task.id }}" draggable="false">
+      <article class="kanban-card {% if task.archived %}kanban-card-archived{% endif %}" data-id="{{ task.id }}" draggable="false">
         <a href="/tasks/{{ task.id }}" class="kanban-card-link">
           <div class="kanban-card-num">{{ format_idea_label(task) }}</div>
           <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
@@ -36,6 +36,7 @@
             {% if task.author %}<span>{{ task.author }}</span>{% endif %}
             <span>{{ task.telegram_datetime.strftime('%d.%m.%Y') }}</span>
           </div>
+          {% if task.archived %}<div class="kanban-card-archive">Архив</div>{% endif %}
           {% set ig = format_igraetsya(task) %}
           {% if ig %}<div class="kanban-card-badge">{{ ig }}</div>{% endif %}
         </a>

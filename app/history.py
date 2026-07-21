@@ -23,6 +23,7 @@ FIELD_LABELS = {
     "status": "Статус",
     "proverena": "Проверена своими руками",
     "has_video": "Есть видео",
+    "archived": "Архив",
     "video_url": "Ссылка на видео",
     "sources": "Ссылки и источники",
     "telegram_datetime": "Дата в Telegram",
@@ -62,6 +63,8 @@ def format_value(field: str, value) -> str:
         return "—"
     if field == "has_video":
         return "Да" if value else "Нет"
+    if field == "archived":
+        return "Да — больше не предлагаем" if value else "Нет"
     if field == "naznachenie":
         return NAZNACHENIE_LABELS.get(value, str(value))
     if field == "status":
@@ -118,6 +121,8 @@ def record_created(db: Session, task: Task, user: str) -> None:
         if value in (None, ""):
             continue
         if field == "has_video" and not value:
+            continue
+        if field == "archived" and not value:
             continue
         changes.append({
             "field": field,

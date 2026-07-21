@@ -29,6 +29,8 @@ def _ensure_columns():
             conn.execute(text("ALTER TABLE tasks ADD COLUMN formulirovka TEXT"))
         if "itogovaya_formulirovka" not in cols:
             conn.execute(text("ALTER TABLE tasks ADD COLUMN itogovaya_formulirovka TEXT"))
+        if "archived" not in cols:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN archived BOOLEAN DEFAULT 0 NOT NULL"))
 
 
 _ensure_columns()

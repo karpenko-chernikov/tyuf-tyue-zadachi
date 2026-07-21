@@ -46,6 +46,7 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
             f"Автор: {task.author or '—'}",
             f"Проверена своими руками: {PROVERENA_LABELS.get(task.proverena or '', '—')}",
             f"Есть видео: {'Да' if task.has_video else 'Нет'}",
+            f"Архив: {'Да — больше не предлагаем' if task.archived else 'Нет'}",
         ]
 
         igraetsya = format_igraetsya(task)
@@ -121,6 +122,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
         "Статус",
         "Дата в Telegram",
         "Автор",
+        "Архив",
         "Условие",
         "Файлы к условию",
         "Формулировка перед отправлением",
@@ -155,6 +157,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             STATUS_LABELS.get(task.status, task.status),
             _dt(task.telegram_datetime),
             task.author or "",
+            "Да" if task.archived else "Нет",
             task.condition or "",
             task_files,
             task.formulirovka or "",

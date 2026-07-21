@@ -528,6 +528,7 @@ def _build_task_from_form(
     status: str,
     proverena: str,
     has_video: bool,
+    archived: bool,
     video_url: str,
     sources: str,
     telegram_datetime: str,
@@ -606,6 +607,7 @@ def _build_task_from_form(
     task.status = status or Status.TG.value
     task.proverena = proverena or None
     task.has_video = video_flag
+    task.archived = bool(archived)
     task.video_url = video_clean
     task.sources = sources_clean
     task.telegram_datetime = tg_dt
@@ -657,6 +659,7 @@ async def create_task(
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
     has_video: bool = Form(False),
+    archived: bool = Form(False),
     video_url: str = Form(""),
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
@@ -687,6 +690,7 @@ async def create_task(
             status,
             proverena,
             has_video,
+            archived,
             video_url,
             sources,
             telegram_datetime,
@@ -736,6 +740,7 @@ async def create_task(
             "status": status,
             "proverena": proverena,
             "has_video": has_video,
+            "archived": archived,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,
@@ -875,6 +880,7 @@ async def update_task(
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
     has_video: bool = Form(False),
+    archived: bool = Form(False),
     video_url: str = Form(""),
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
@@ -907,6 +913,7 @@ async def update_task(
             status,
             proverena,
             has_video,
+            archived,
             video_url,
             sources,
             telegram_datetime,
@@ -939,6 +946,7 @@ async def update_task(
             "status": status,
             "proverena": proverena,
             "has_video": has_video,
+            "archived": archived,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,
