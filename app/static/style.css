@@ -208,11 +208,11 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.06em;
 }
 .table tbody tr:nth-child(odd) td { background: #ffffff; }
-.table tbody tr:nth-child(even) td { background: #f3f7f5; }
+.table tbody tr:nth-child(even) td { background: #e4efe9; }
 .table tr:last-child td { border-bottom: none; }
 .table tr.clickable { cursor: pointer; }
 .table tr.clickable:hover td {
-  background: #e4f0eb !important;
+  background: #cfe6db !important;
 }
 .table-count { margin-top: 12px; }
 
@@ -256,9 +256,9 @@ a:hover { text-decoration: underline; }
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.3;
   white-space: nowrap;
@@ -266,40 +266,40 @@ a:hover { text-decoration: underline; }
 
 /* Назначение — спокойные оттенки бренда */
 .board-chip { background: #e8f0ec; color: #3d5c50; }
-.board-tyue { background: #e2eef8; color: #2f5a7a; }
-.board-both { background: #e4f2ec; color: #1f6b55; }
-.board-kapitany { background: #f0eaf6; color: #5a4570; }
+.board-tyue { background: #d7e8f6; color: #245578; }
+.board-both { background: #d6eee4; color: #176850; }
+.board-kapitany { background: #e8dff3; color: #553a70; }
 .board-none { background: #eef0ef; color: var(--muted); }
 
 /* Статусы */
 .status-pill { font-weight: 600; }
-.status-tg { background: #e9eef3; color: #45566a; }
-.status-formulirovka { background: #eaf3ea; color: #3d6a45; }
-.status-metodkom { background: #e8eef8; color: #3a5080; }
-.status-igraetsya { background: #e4f4ee; color: #1a6b52; }
-.status-otklonena { background: #f6eaea; color: #8a4545; }
+.status-tg { background: #e0e7ef; color: #3a4d61; }
+.status-formulirovka { background: #dcefdc; color: #2f5f38; }
+.status-metodkom { background: #dce5f5; color: #334978; }
+.status-igraetsya { background: #d4efe5; color: #146347; }
+.status-otklonena { background: #f3dede; color: #7d3535; }
 .status-other { background: #eef0ef; color: var(--muted); }
 
-/* Авторы — тёплая согласованная палитра */
+/* Авторы — заметные овалы в одной палитре */
 .author-pill.author-nikita {
-  background: #f6e4d4;
-  color: #9a4f1c;
-  box-shadow: inset 0 0 0 1px rgba(154, 79, 28, 0.12);
+  background: #f0b27a;
+  color: #5c2e08;
+  box-shadow: inset 0 0 0 1px rgba(120, 60, 10, 0.18);
 }
 .author-pill.author-artem {
-  background: #dde9f4;
-  color: #2f5f82;
-  box-shadow: inset 0 0 0 1px rgba(47, 95, 130, 0.12);
+  background: #8eb8d9;
+  color: #14324a;
+  box-shadow: inset 0 0 0 1px rgba(20, 50, 74, 0.16);
 }
 .author-pill.author-ilya {
-  background: #e8e0f2;
-  color: #5c3d78;
-  box-shadow: inset 0 0 0 1px rgba(92, 61, 120, 0.12);
+  background: #c4a5db;
+  color: #3a1f4a;
+  box-shadow: inset 0 0 0 1px rgba(60, 30, 90, 0.16);
 }
 .author-pill.author-other {
-  background: #e7eee9;
-  color: #456055;
-  box-shadow: inset 0 0 0 1px rgba(69, 96, 85, 0.1);
+  background: #a8c4b4;
+  color: #1e3a2c;
+  box-shadow: inset 0 0 0 1px rgba(30, 58, 44, 0.12);
 }
 
 @media (max-width: 768px) {
