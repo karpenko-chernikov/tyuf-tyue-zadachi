@@ -4,9 +4,14 @@ __pycache__/
 .venv/
 venv/
 
-# Данные и секреты
+# Секреты (пароли) — не в git
 .env
-data/
+
+# База задач хранится в git (data/zadachi.db)
+# временные файлы sqlite
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 
 # OS / IDE
 .DS_Store
