@@ -16,9 +16,9 @@
 {% if not task %}
 <section class="card paste-box">
   <h2>Быстрая вставка из Telegram</h2>
-  <p class="muted">Вставьте текст сообщения — система попробует распознать номер идеи, ссылки и назначение (КК).</p>
+  <p class="muted">Вставьте текст сообщения — система распознает номер идеи, название, условие, ссылки и назначение (КК).</p>
   <form method="post" action="/parse">
-    <textarea name="paste" rows="6" placeholder="Идея 195&#10;Оптоволокно своими руками...">{{ paste or '' }}</textarea>
+    <textarea name="paste" rows="6" placeholder="Идея 12&#10;Металл в огне&#10;Нагрейте разные металлические предметы…">{{ paste or '' }}</textarea>
     <button type="submit" class="btn secondary">Разобрать текст</button>
   </form>
 </section>

@@ -5,6 +5,9 @@ IDEA_RE = re.compile(r"(?:Идея|идея)\s*(?:№|#|номер)?\s*(\d+)", r
 KAPITANY_RE = re.compile(r"(?:на\s+)?кк|конкурс\s+капитанов|задание\s+на\s+кк", re.IGNORECASE)
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
+# Короткая строка после «Идея N» — это название, а не условие
+_TITLE_MAX_LEN = 80
+
 
 def extract_urls(text: str) -> list[str]:
     return URL_RE.findall(text or "")
@@ -19,13 +22,67 @@ def is_kapitany(text: str) -> bool:
     return bool(KAPITANY_RE.search(text or ""))
 
 
-def strip_idea_header(text: str) -> str:
-    if not text:
-        return ""
-    lines = text.strip().splitlines()
-    if lines and IDEA_RE.match(lines[0].strip()):
-        lines = lines[1:]
-    return "\n".join(lines).strip()
+def _looks_like_title(line: str) -> bool:
+    text = (line or "").strip()
+    if not text or text.startswith("http"):
+        return False
+    if len(text) > _TITLE_MAX_LEN:
+        return False
+    # Длинное предложение с точкой посредине — скорее условие
+    if ". " in text:
+        return False
+    return True
+
+
+def _split_paste_body(text: str) -> tuple[str | None, str | None]:
+    """После заголовка «Идея N» отделяет название и условие."""
+    if not text or not str(text).strip():
+        return None, None
+
+    lines = [ln.strip() for ln in str(text).strip().splitlines()]
+    while lines and not lines[0]:
+        lines.pop(0)
+    if not lines:
+        return None, None
+
+    title: str | None = None
+    body_lines: list[str]
+
+    first = lines[0]
+    idea_match = IDEA_RE.match(first)
+    if idea_match:
+        after = first[idea_match.end() :].strip(" \t.:-—–")
+        rest = lines[1:]
+        if after and _looks_like_title(after):
+            title = after
+            body_lines = rest
+        elif after:
+            # «Идея 12 — длинный текст условия…» в одной строке
+            body_lines = [after, *rest]
+        else:
+            body_lines = rest
+    else:
+        body_lines = lines
+
+    while body_lines and not body_lines[0]:
+        body_lines.pop(0)
+
+    if title is None and body_lines:
+        candidate = body_lines[0]
+        more = body_lines[1:]
+        # Есть ещё текст после короткой строки → это название
+        if _looks_like_title(candidate) and any(ln.strip() for ln in more):
+            title = candidate
+            body_lines = more
+            while body_lines and not body_lines[0]:
+                body_lines.pop(0)
+        elif _looks_like_title(candidate) and not any(ln.strip() for ln in more):
+            # Только короткая строка — считаем названием
+            title = candidate
+            body_lines = []
+
+    condition = "\n".join(body_lines).strip() or None
+    return title, condition
 
 
 def parse_paste(text: str) -> dict:
@@ -33,17 +90,19 @@ def parse_paste(text: str) -> dict:
     idea_number = parse_idea_number(text)
     kapitany = is_kapitany(text)
     urls = extract_urls(text)
-    condition = strip_idea_header(text)
-    for url in urls:
-        condition = condition.replace(url, "").strip()
-    condition = re.sub(r"\n{3,}", "\n\n", condition).strip()
+    title, condition = _split_paste_body(text)
+
+    if condition:
+        for url in urls:
+            condition = condition.replace(url, "").strip()
+        condition = re.sub(r"\n{3,}", "\n\n", condition).strip() or None
 
     naznachenie = "kapitany" if kapitany else None
 
     return {
         "idea_number": idea_number,
-        "title": None,
-        "condition": condition or None,
+        "title": title,
+        "condition": condition,
         "naznachenie": naznachenie,
         "sources": "\n".join(urls) if urls else None,
         "has_video": any("youtube" in u or "instagram" in u or "youtu.be" in u for u in urls),
