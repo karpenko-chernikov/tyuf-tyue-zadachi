@@ -91,6 +91,12 @@ a:hover { text-decoration: underline; }
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
 .subtitle {
   display: block;
   font-family: var(--font);
@@ -160,6 +166,7 @@ a:hover { text-decoration: underline; }
   background: var(--surface);
 }
 .filters input[type="search"] { flex: 1; min-width: 200px; }
+.filters-export { margin-left: 4px; }
 
 .table {
   width: 100%;

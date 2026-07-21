@@ -22,6 +22,9 @@
   </select>
   <button type="submit">Фильтр</button>
   <a href="/" class="btn secondary">Сбросить</a>
+  <span class="filters-export muted">Выгрузка по фильтру:</span>
+  <a class="btn secondary" href="/export/txt?q={{ q|urlencode }}&naznachenie={{ naznachenie|urlencode }}&status={{ status_filter|urlencode }}">TXT</a>
+  <a class="btn secondary" href="/export/csv?q={{ q|urlencode }}&naznachenie={{ naznachenie|urlencode }}&status={{ status_filter|urlencode }}">CSV</a>
 </form>
 
 {% if tasks %}

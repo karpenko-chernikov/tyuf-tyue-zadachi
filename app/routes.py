@@ -820,6 +820,7 @@ def delete_task(request: Request, task_id: int, db: Session = Depends(get_db)):
 def export_txt(
     request: Request,
     db: Session = Depends(get_db),
+    q: str = Query(None),
     naznachenie: str = Query(None),
     status: str = Query(None),
 ):
@@ -827,7 +828,7 @@ def export_txt(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, None, naznachenie, status).options(joinedload(Task.comments)).all()
+    tasks = _filter_tasks(db, q, naznachenie, status).options(joinedload(Task.comments)).all()
     content = export_tasks_txt(db, tasks)
     filename = f"zadachi_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
     return PlainTextResponse(
@@ -841,6 +842,7 @@ def export_txt(
 def export_csv(
     request: Request,
     db: Session = Depends(get_db),
+    q: str = Query(None),
     naznachenie: str = Query(None),
     status: str = Query(None),
 ):
@@ -848,7 +850,7 @@ def export_csv(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, None, naznachenie, status).options(joinedload(Task.comments)).all()
+    tasks = _filter_tasks(db, q, naznachenie, status).options(joinedload(Task.comments)).all()
     content = export_tasks_csv(db, tasks)
     filename = f"zadachi_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
     return Response(
