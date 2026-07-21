@@ -34,6 +34,20 @@
 <section class="card">
   <h2>Условие</h2>
   <div class="pre-wrap">{{ task.condition or '—' }}</div>
+  {% if task_files %}
+  <ul class="file-list">
+    {% for a in task_files %}
+    <li>
+      <a href="/files/{{ a.id }}">{{ a.filename }}</a>
+      <span class="muted">{{ format_size(a.size) }} · {{ a.uploaded_by }}</span>
+      <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
+            onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
+        <button type="submit" class="btn-link-danger">Удалить</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 </section>
 
 {% if task.formulirovka %}
@@ -84,6 +98,20 @@
         </form>
       </div>
       <div class="comment-text">{{ c.text }}</div>
+      {% if c.attachments %}
+      <ul class="file-list file-list-compact">
+        {% for a in c.attachments %}
+        <li>
+          <a href="/files/{{ a.id }}">{{ a.filename }}</a>
+          <span class="muted">{{ format_size(a.size) }}</span>
+          <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
+                onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
+            <button type="submit" class="btn-link-danger">Удалить</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -91,7 +119,7 @@
   <p class="muted">Комментариев пока нет.</p>
   {% endif %}
 
-  <form method="post" action="/tasks/{{ task.id }}/comments" class="comment-form">
+  <form method="post" action="/tasks/{{ task.id }}/comments" class="comment-form" enctype="multipart/form-data">
     <h3>Новый комментарий</h3>
     <label>Кто пишет
       <input type="text" name="author" list="comment-authors" required value="{{ user }}" placeholder="Имя">
@@ -103,6 +131,10 @@
     </label>
     <label>Текст
       <textarea name="text" rows="4" required placeholder="Отзыв, обсуждение…"></textarea>
+    </label>
+    <label>Файлы
+      <span class="hint">необязательно, до 15 МБ каждый</span>
+      <input type="file" name="comment_files" multiple>
     </label>
     <button type="submit" class="btn primary">Добавить комментарий</button>
   </form>

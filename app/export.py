@@ -11,7 +11,7 @@ from app.enums import (
     TURNIR_LABELS,
     ETAP_LABELS,
 )
-from app.models import Task
+from app.models import Comment, Task
 from app.utils import format_igraetsya, format_idea_label
 
 
@@ -25,7 +25,10 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
     if tasks is None:
         tasks = (
             db.query(Task)
-            .options(joinedload(Task.comments))
+            .options(
+                joinedload(Task.comments).joinedload(Comment.attachments),
+                joinedload(Task.attachments),
+            )
             .order_by(Task.idea_number.asc().nullslast(), Task.id.asc())
             .all()
         )
@@ -53,6 +56,13 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
         lines.append("Условие:")
         lines.append(task.condition or "—")
 
+        task_files = [a for a in (task.attachments or []) if a.comment_id is None]
+        if task_files:
+            lines.append("")
+            lines.append("Файлы к условию:")
+            for a in task_files:
+                lines.append(f"- {a.filename}")
+
         if task.formulirovka:
             lines.append("")
             lines.append("Формулировка перед отправлением:")
@@ -77,6 +87,8 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
                 lines.append(f"[{_dt(c.created_at)}] {c.author}:")
                 for comment_line in (c.text or "—").splitlines():
                     lines.append(f"  {comment_line}")
+                for a in (c.attachments or []):
+                    lines.append(f"  [файл] {a.filename}")
                 lines.append("")
         else:
             lines.append("  —")
@@ -91,7 +103,10 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
     if tasks is None:
         tasks = (
             db.query(Task)
-            .options(joinedload(Task.comments))
+            .options(
+                joinedload(Task.comments).joinedload(Comment.attachments),
+                joinedload(Task.attachments),
+            )
             .order_by(Task.idea_number.asc().nullslast(), Task.id.asc())
             .all()
         )
@@ -107,6 +122,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
         "Дата в Telegram",
         "Автор",
         "Условие",
+        "Файлы к условию",
         "Формулировка перед отправлением",
         "Итоговая формулировка",
         "Источники",
@@ -121,7 +137,15 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
     for task in tasks:
         comments = " | ".join(
             f"[{_dt(c.created_at)}] {c.author}: {c.text}"
+            + (
+                " [" + ", ".join(a.filename for a in (c.attachments or [])) + "]"
+                if c.attachments
+                else ""
+            )
             for c in sorted(task.comments, key=lambda x: x.created_at)
+        )
+        task_files = ", ".join(
+            a.filename for a in (task.attachments or []) if a.comment_id is None
         )
         writer.writerow([
             task.idea_number or "",
@@ -132,6 +156,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             _dt(task.telegram_datetime),
             task.author or "",
             task.condition or "",
+            task_files,
             task.formulirovka or "",
             task.itogovaya_formulirovka or "",
             (task.sources or "").replace("\n", " "),

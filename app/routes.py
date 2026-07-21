@@ -1,6 +1,8 @@
 from datetime import datetime
+from typing import Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
@@ -22,20 +24,32 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
+from app.files import format_size, save_uploads
 from app.history import (
     action_label,
     parse_changes,
     record_comment_added,
     record_comment_deleted,
     record_created,
+    record_file_added,
+    record_file_deleted,
     record_update,
     snapshot_task,
 )
-from app.models import Comment, Task
+from app.models import Attachment, Comment, Task
 from app.utils import format_igraetsya, format_idea_label, parse_datetime_local, parse_paste
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["format_size"] = format_size
+
+
+def _normalize_uploads(files: Optional[list[UploadFile] | UploadFile]) -> list[UploadFile]:
+    if not files:
+        return []
+    if isinstance(files, list):
+        return files
+    return [files]
 
 # Поля, которые очищаем при уходе со статуса «играется»
 _IGRAETSYA_ONLY_FIELDS = (
@@ -153,6 +167,7 @@ def _form_context(db: Session, **extra):
         "status_hint": None,
         "pending_status": None,
         "cancel_url": None,
+        "task_files": [],
     }
     ctx.update(extra)
     return ctx
@@ -556,7 +571,7 @@ def _add_initial_comments(db: Session, task: Task, authors, texts, default_user:
 
 
 @router.post("/tasks")
-def create_task(
+async def create_task(
     request: Request,
     db: Session = Depends(get_db),
     idea_number: str = Form(""),
@@ -579,6 +594,7 @@ def create_task(
     comment_authors: list[str] = Form(default=[]),
     comment_texts: list[str] = Form(default=[]),
     after: str = Form(""),
+    task_files: Optional[list[UploadFile]] = File(None),
 ):
     user = login_required(request)
     if not user:
@@ -609,6 +625,14 @@ def create_task(
         db.flush()
         record_created(db, task, user)
         _add_initial_comments(db, task, comment_authors, comment_texts, user)
+        for att in await save_uploads(
+            db,
+            task_id=task.id,
+            comment_id=None,
+            uploads=_normalize_uploads(task_files),
+            uploaded_by=user,
+        ):
+            record_file_added(db, task.id, user, att.filename, for_comment=False)
         db.commit()
         db.refresh(task)
         if after == "new":
@@ -676,7 +700,8 @@ def task_detail(
         return RedirectResponse("/login", status_code=303)
 
     task = db.query(Task).options(
-        joinedload(Task.comments),
+        joinedload(Task.comments).joinedload(Comment.attachments),
+        joinedload(Task.attachments),
         joinedload(Task.history),
     ).filter(Task.id == task_id).first()
     if not task:
@@ -690,12 +715,15 @@ def task_detail(
             "changes": parse_changes(entry),
         })
 
+    task_files = [a for a in task.attachments if a.comment_id is None]
+
     return templates.TemplateResponse(
         request,
         "detail.html",
         {
             "user": user,
             "task": task,
+            "task_files": task_files,
             "just_created": created == "1",
             "naznachenie_labels": NAZNACHENIE_LABELS,
             "status_labels": STATUS_LABELS,
@@ -720,7 +748,7 @@ def edit_task_page(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    task = db.get(Task, task_id)
+    task = db.query(Task).options(joinedload(Task.attachments)).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
@@ -739,6 +767,7 @@ def edit_task_page(
         hint = "Заполните «Итоговую формулировку» и данные турнира, затем «Сохранить». «Отмена» — статус не изменится."
 
     cancel_url = f"/kanban/{task.naznachenie}" if task.naznachenie else f"/tasks/{task.id}"
+    task_files = [a for a in task.attachments if a.comment_id is None]
 
     return templates.TemplateResponse(
         request,
@@ -752,12 +781,13 @@ def edit_task_page(
             status_labels=_available_statuses(task.naznachenie),
             status_hint=hint,
             cancel_url=cancel_url,
+            task_files=task_files,
         ),
     )
 
 
 @router.post("/tasks/{task_id}")
-def update_task(
+async def update_task(
     request: Request,
     task_id: int,
     db: Session = Depends(get_db),
@@ -778,6 +808,7 @@ def update_task(
     turnir_year: str = Form(""),
     task_number: str = Form(""),
     etap_kk: str = Form(""),
+    task_files: Optional[list[UploadFile]] = File(None),
 ):
     user = login_required(request)
     if not user:
@@ -811,6 +842,14 @@ def update_task(
             etap_kk,
         )
         record_update(db, task, user, before)
+        for att in await save_uploads(
+            db,
+            task_id=task.id,
+            comment_id=None,
+            uploads=_normalize_uploads(task_files),
+            uploaded_by=user,
+        ):
+            record_file_added(db, task.id, user, att.filename, for_comment=False)
         db.commit()
         return RedirectResponse(f"/tasks/{task_id}", status_code=303)
     except ValueError as e:
@@ -834,6 +873,7 @@ def update_task(
             "task_number": task_number,
             "etap_kk": etap_kk,
         }
+        task_files_existing = [a for a in task.attachments if a.comment_id is None]
         return templates.TemplateResponse(
             request,
             "form.html",
@@ -845,18 +885,20 @@ def update_task(
                 form=form,
                 status_labels=_available_statuses(naznachenie),
                 error=str(e),
+                task_files=task_files_existing,
             ),
             status_code=400,
         )
 
 
 @router.post("/tasks/{task_id}/comments")
-def add_comment(
+async def add_comment(
     request: Request,
     task_id: int,
     db: Session = Depends(get_db),
     text: str = Form(...),
     author: str = Form(...),
+    comment_files: Optional[list[UploadFile]] = File(None),
 ):
     user = login_required(request)
     if not user:
@@ -875,7 +917,16 @@ def add_comment(
         author=author.strip() or user,
     )
     db.add(comment)
+    db.flush()
     record_comment_added(db, task_id, user, comment.author, comment.text)
+    for att in await save_uploads(
+        db,
+        task_id=task_id,
+        comment_id=comment.id,
+        uploads=_normalize_uploads(comment_files),
+        uploaded_by=user,
+    ):
+        record_file_added(db, task_id, user, att.filename, for_comment=True)
     db.commit()
     return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
 
@@ -897,6 +948,57 @@ def delete_comment(
         db.delete(comment)
         db.commit()
     return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
+
+
+@router.get("/files/{attachment_id}")
+def download_file(
+    request: Request,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    att = db.get(Attachment, attachment_id)
+    if not att:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    # RFC 5987 для кириллицы в имени файла
+    quoted = quote(att.filename)
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quoted}",
+    }
+    return Response(
+        content=bytes(att.data),
+        media_type=att.content_type or "application/octet-stream",
+        headers=headers,
+    )
+
+
+@router.post("/files/{attachment_id}/delete")
+def delete_file(
+    request: Request,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    att = db.get(Attachment, attachment_id)
+    if not att:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    task_id = att.task_id
+    record_file_deleted(db, task_id, user, att.filename)
+    db.delete(att)
+    db.commit()
+
+    referer = request.headers.get("referer") or f"/tasks/{task_id}"
+    if "/edit" in referer:
+        return RedirectResponse(f"/tasks/{task_id}/edit", status_code=303)
+    return RedirectResponse(f"/tasks/{task_id}", status_code=303)
 
 
 @router.post("/tasks/{task_id}/delete")
@@ -924,7 +1026,10 @@ def export_txt(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, q, naznachenie, status).options(joinedload(Task.comments)).all()
+    tasks = _filter_tasks(db, q, naznachenie, status).options(
+        joinedload(Task.comments).joinedload(Comment.attachments),
+        joinedload(Task.attachments),
+    ).all()
     content = export_tasks_txt(db, tasks)
     filename = f"zadachi_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
     return PlainTextResponse(
@@ -946,7 +1051,10 @@ def export_csv(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, q, naznachenie, status).options(joinedload(Task.comments)).all()
+    tasks = _filter_tasks(db, q, naznachenie, status).options(
+        joinedload(Task.comments).joinedload(Comment.attachments),
+        joinedload(Task.attachments),
+    ).all()
     content = export_tasks_csv(db, tasks)
     filename = f"zadachi_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
     return Response(

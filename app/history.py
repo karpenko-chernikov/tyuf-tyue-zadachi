@@ -39,6 +39,8 @@ ACTION_LABELS = {
     "updated": "изменил",
     "comment_added": "добавил комментарий",
     "comment_deleted": "удалил комментарий",
+    "file_added": "приложил файл",
+    "file_deleted": "удалил файл",
 }
 
 
@@ -156,6 +158,22 @@ def record_comment_deleted(db: Session, task_id: int, user: str, author: str, te
         "comment_deleted",
         summary=f"{author}: {preview}",
     )
+
+
+def record_file_added(
+    db: Session,
+    task_id: int,
+    user: str,
+    filename: str,
+    *,
+    for_comment: bool = False,
+) -> None:
+    where = "к комментарию" if for_comment else "к условию"
+    _add_entry(db, task_id, user, "file_added", summary=f"{filename} ({where})")
+
+
+def record_file_deleted(db: Session, task_id: int, user: str, filename: str) -> None:
+    _add_entry(db, task_id, user, "file_deleted", summary=filename)
 
 
 def parse_changes(entry: TaskHistory) -> list[dict]:

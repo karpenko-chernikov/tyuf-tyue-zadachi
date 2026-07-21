@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -44,6 +44,12 @@ class Task(Base):
         cascade="all, delete-orphan",
         order_by="TaskHistory.created_at.desc()",
     )
+    attachments = relationship(
+        "Attachment",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="Attachment.created_at",
+    )
 
 
 class User(Base):
@@ -69,6 +75,33 @@ class Comment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     task = relationship("Task", back_populates="comments")
+    attachments = relationship(
+        "Attachment",
+        back_populates="comment",
+        cascade="all, delete-orphan",
+        order_by="Attachment.created_at",
+    )
+
+
+class Attachment(Base):
+    """Файл к условию задачи (comment_id пустой) или к комментарию."""
+
+    __tablename__ = "attachments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=False)
+    comment_id = Column(
+        Integer, ForeignKey("comments.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    filename = Column(String(500), nullable=False)
+    content_type = Column(String(200), nullable=True)
+    size = Column(Integer, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    uploaded_by = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("Task", back_populates="attachments")
+    comment = relationship("Comment", back_populates="attachments")
 
 
 class TaskHistory(Base):
@@ -79,7 +112,7 @@ class TaskHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=False)
     user = Column(String(100), nullable=False)
-    action = Column(String(50), nullable=False)  # created, updated, comment_added, comment_deleted
+    action = Column(String(50), nullable=False)
     summary = Column(Text, nullable=True)
     changes_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)

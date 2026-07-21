@@ -24,7 +24,7 @@
 {% endif %}
 
 <section class="card">
-  <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}">
+  <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}" enctype="multipart/form-data">
     <div class="grid-2">
       <label>Номер идеи
         <input type="number" name="idea_number"
@@ -49,6 +49,25 @@
       <span class="hint">для КК варианты ответа тоже пишите сюда</span>
       <textarea name="condition" rows="8" required>{% if f.condition is defined %}{{ f.condition }}{% elif task %}{{ task.condition or '' }}{% else %}{{ p.condition or '' }}{% endif %}</textarea>
     </label>
+
+    <label>Файлы к условию
+      <span class="hint">фото, PDF, схемы — до 15 МБ каждый, можно несколько</span>
+      <input type="file" name="task_files" multiple>
+    </label>
+    {% if task_files %}
+    <ul class="file-list">
+      {% for a in task_files %}
+      <li>
+        <a href="/files/{{ a.id }}">{{ a.filename }}</a>
+        <span class="muted">{{ format_size(a.size) }}</span>
+        <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
+              onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
+          <button type="submit" class="btn-link-danger">Удалить</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
 
     <div class="grid-3">
       <label>Автор задачи *
