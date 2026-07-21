@@ -169,7 +169,7 @@
       <h3>Комментарии</h3>
       <p class="muted">Можно сразу сохранить отзывы — у каждого свой автор. Необязательно.</p>
       <div id="comment-rows">
-        {% set draft_comments = f.comments if f.comments else [{'author': user, 'text': ''}] %}
+        {% set draft_comments = f.comments if f.comments else [{'author': default_comment_author, 'text': ''}] %}
         {% for c in draft_comments %}
         <div class="comment-row">
           <label>Автор комментария
@@ -241,7 +241,7 @@ if (addBtn) {
     row.className = 'comment-row';
     row.innerHTML = `
       <label>Автор комментария
-        <input type="text" name="comment_authors" list="authors-list" placeholder="Кто пишет">
+        <input type="text" name="comment_authors" list="authors-list" value="{{ default_comment_author }}" placeholder="Кто пишет">
       </label>
       <label>Текст
         <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…"></textarea>

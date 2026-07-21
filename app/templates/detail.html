@@ -101,7 +101,7 @@
   <form method="post" action="/tasks/{{ task.id }}/comments" class="comment-form" enctype="multipart/form-data">
     <h3>Новый комментарий</h3>
     <label>Кто пишет
-      <input type="text" name="author" list="comment-authors" required value="{{ user }}" placeholder="Имя">
+      <input type="text" name="author" list="comment-authors" required value="{{ default_comment_author }}" placeholder="Имя">
       <datalist id="comment-authors">
         {% for a in authors %}
         <option value="{{ a }}"></option>

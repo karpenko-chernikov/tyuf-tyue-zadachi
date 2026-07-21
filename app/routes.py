@@ -13,6 +13,7 @@ from app.database import get_db
 from app.enums import (
     AUTHORS,
     BOARD_STATUSES,
+    DEFAULT_COMMENT_AUTHOR,
     ETAP_LABELS,
     METODKOM_ONLY_FOR,
     NAZNACHENIE_LABELS,
@@ -174,6 +175,7 @@ def _form_context(db: Session, **extra):
         "turnir_labels": TURNIR_LABELS,
         "etap_labels": ETAP_LABELS,
         "default_telegram_datetime": _default_telegram_datetime(db),
+        "default_comment_author": DEFAULT_COMMENT_AUTHOR,
         "form": None,
         "error": None,
         "status_hint": None,
@@ -598,7 +600,7 @@ def _add_initial_comments(db: Session, task: Task, authors, texts, default_user:
         text = (texts[i] if i < len(texts) else "").strip()
         if not text:
             continue
-        author = (authors[i] if i < len(authors) else "").strip() or default_user
+        author = (authors[i] if i < len(authors) else "").strip() or DEFAULT_COMMENT_AUTHOR
         db.add(Comment(task_id=task.id, text=text, author=author))
         record_comment_added(db, task.id, default_user, author, text)
 
@@ -682,7 +684,7 @@ async def create_task(
         n = max(len(comment_authors), len(comment_texts), 1)
         for i in range(n):
             comments_draft.append({
-                "author": comment_authors[i] if i < len(comment_authors) else user,
+                "author": comment_authors[i] if i < len(comment_authors) else DEFAULT_COMMENT_AUTHOR,
                 "text": comment_texts[i] if i < len(comment_texts) else "",
             })
         form = {
@@ -764,6 +766,7 @@ def task_detail(
             "format_igraetsya": format_igraetsya,
             "format_idea_label": format_idea_label,
             "authors": _author_suggestions(db),
+            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
             "history": history,
         },
     )

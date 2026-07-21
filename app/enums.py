@@ -95,3 +95,4 @@ BOARD_STATUSES = {
 }
 
 AUTHORS = ["Никита", "Артём", "Илья"]
+DEFAULT_COMMENT_AUTHOR = "Илья"
