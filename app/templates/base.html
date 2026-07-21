@@ -46,9 +46,10 @@
       }
       wrap.classList.add('has-files');
       if (files.length === 1) {
-        chosen.textContent = files[0].name;
+        chosen.textContent = 'Выбран 1 файл: ' + files[0].name;
       } else {
-        chosen.textContent = files.length + ' файла: ' + files.map(f => f.name).join(', ');
+        const names = files.map(f => f.name).join(', ');
+        chosen.textContent = 'Выбрано файлов: ' + files.length + ' — ' + names;
       }
     };
 
