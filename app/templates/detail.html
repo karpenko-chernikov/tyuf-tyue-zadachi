@@ -70,7 +70,7 @@
 <section class="card" id="comments">
   <h2>Комментарии <span class="count-pill">{{ task.comments|length }}</span></h2>
   <p class="muted help-box">
-    Лента обсуждения: отзывы, реплики, решения. У каждого комментария свой автор и время.
+    Можно написать текст, приложить фото/файлы или и то и другое.
   </p>
 
   {% if task.comments %}
@@ -85,7 +85,11 @@
           <button type="submit" class="btn btn-sm danger">Удалить</button>
         </form>
       </div>
+      {% if c.text %}
       <div class="comment-text">{{ c.text }}</div>
+      {% elif c.attachments %}
+      <div class="comment-text muted">Без текста · только вложение</div>
+      {% endif %}
       {{ attachment_list(c.attachments, compact=true) }}
     </div>
     {% endfor %}
@@ -105,11 +109,12 @@
       </datalist>
     </label>
     <label>Текст
-      <textarea name="text" rows="4" required placeholder="Отзыв, обсуждение…"></textarea>
+      <span class="hint">необязательно, если есть файлы</span>
+      <textarea name="text" rows="4" placeholder="Отзыв, обсуждение…"></textarea>
     </label>
     <div class="field-block">
       <div class="field-label">Файлы</div>
-      {{ file_picker('comment_files', 'Необязательно · до 15 МБ каждый') }}
+      {{ file_picker('comment_files', 'Можно без текста · до 15 МБ каждый') }}
     </div>
     <button type="submit" class="btn primary">Добавить комментарий</button>
   </form>

@@ -928,7 +928,7 @@ async def add_comment(
     request: Request,
     task_id: int,
     db: Session = Depends(get_db),
-    text: str = Form(...),
+    text: str = Form(""),
     author: str = Form(...),
     comment_files: Optional[list[UploadFile]] = File(None),
 ):
@@ -940,22 +940,32 @@ async def add_comment(
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    if not text.strip():
+    text_clean = (text or "").strip()
+    uploads = _normalize_uploads(comment_files)
+    has_files = any(u and u.filename for u in uploads)
+
+    # Можно: только текст, только файлы, или и то и другое
+    if not text_clean and not has_files:
         return RedirectResponse(f"/tasks/{task_id}#comments", status_code=303)
 
     comment = Comment(
         task_id=task_id,
-        text=text.strip(),
+        text=text_clean,
         author=author.strip() or user,
     )
     db.add(comment)
     db.flush()
-    record_comment_added(db, task_id, user, comment.author, comment.text)
+    summary = text_clean if text_clean else ("файл" if has_files else "")
+    if has_files and text_clean:
+        summary = text_clean
+    elif has_files and not text_clean:
+        summary = "(только файл)"
+    record_comment_added(db, task_id, user, comment.author, summary)
     for att in await save_uploads(
         db,
         task_id=task_id,
         comment_id=comment.id,
-        uploads=_normalize_uploads(comment_files),
+        uploads=uploads,
         uploaded_by=user,
     ):
         record_file_added(db, task_id, user, att.filename, for_comment=True)
