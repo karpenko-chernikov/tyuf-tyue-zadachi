@@ -1,0 +1,53 @@
+{# Переиспользуемые куски UI #}
+
+{% macro file_picker(name, hint='Можно несколько · до 15 МБ каждый') %}
+<div class="file-drop" data-file-drop>
+  <input type="file" name="{{ name }}" id="{{ name }}" multiple class="file-drop-input">
+  <label for="{{ name }}" class="file-drop-zone">
+    <span class="file-drop-icon" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </span>
+    <span class="file-drop-copy">
+      <span class="file-drop-title">Выбрать файлы</span>
+      <span class="file-drop-hint">{{ hint }}</span>
+      <span class="file-drop-chosen" data-file-chosen>Файлы не выбраны</span>
+    </span>
+  </label>
+</div>
+{% endmacro %}
+
+
+{% macro attachment_list(items, compact=false) %}
+{% if items %}
+<ul class="file-list{% if compact %} file-list-compact{% endif %}">
+  {% for a in items %}
+  <li class="file-chip">
+    <span class="file-chip-icon" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+    </span>
+    <div class="file-chip-body">
+      <a class="file-chip-name" href="/files/{{ a.id }}">{{ a.filename }}</a>
+      <span class="file-chip-meta">
+        {{ format_size(a.size) }}
+        {% if a.uploaded_by %} · {{ a.uploaded_by }}{% endif %}
+      </span>
+    </div>
+    <div class="file-chip-actions">
+      <a class="btn btn-sm secondary" href="/files/{{ a.id }}">Скачать</a>
+      <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
+            onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
+        <button type="submit" class="btn btn-sm danger">Удалить</button>
+      </form>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}

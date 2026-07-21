@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import file_picker, attachment_list %}
 {% block title %}{% if task.idea_number %}Идея № {{ task.idea_number }}{% else %}Нет номера идеи{% endif %}{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -34,20 +35,7 @@
 <section class="card">
   <h2>Условие</h2>
   <div class="pre-wrap">{{ task.condition or '—' }}</div>
-  {% if task_files %}
-  <ul class="file-list">
-    {% for a in task_files %}
-    <li>
-      <a href="/files/{{ a.id }}">{{ a.filename }}</a>
-      <span class="muted">{{ format_size(a.size) }} · {{ a.uploaded_by }}</span>
-      <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
-            onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
-        <button type="submit" class="btn-link-danger">Удалить</button>
-      </form>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  {{ attachment_list(task_files) }}
 </section>
 
 {% if task.formulirovka %}
@@ -94,24 +82,11 @@
         · {{ c.created_at.strftime('%d.%m.%Y %H:%M') }}
         <form method="post" action="/tasks/{{ task.id }}/comments/{{ c.id }}/delete" class="comment-delete"
               onsubmit="return confirm('Удалить этот комментарий?')">
-          <button type="submit" class="btn-link-danger">Удалить</button>
+          <button type="submit" class="btn btn-sm danger">Удалить</button>
         </form>
       </div>
       <div class="comment-text">{{ c.text }}</div>
-      {% if c.attachments %}
-      <ul class="file-list file-list-compact">
-        {% for a in c.attachments %}
-        <li>
-          <a href="/files/{{ a.id }}">{{ a.filename }}</a>
-          <span class="muted">{{ format_size(a.size) }}</span>
-          <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
-                onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
-            <button type="submit" class="btn-link-danger">Удалить</button>
-          </form>
-        </li>
-        {% endfor %}
-      </ul>
-      {% endif %}
+      {{ attachment_list(c.attachments, compact=true) }}
     </div>
     {% endfor %}
   </div>
@@ -132,10 +107,10 @@
     <label>Текст
       <textarea name="text" rows="4" required placeholder="Отзыв, обсуждение…"></textarea>
     </label>
-    <label>Файлы
-      <span class="hint">необязательно, до 15 МБ каждый</span>
-      <input type="file" name="comment_files" multiple>
-    </label>
+    <div class="field-block">
+      <div class="field-label">Файлы</div>
+      {{ file_picker('comment_files', 'Необязательно · до 15 МБ каждый') }}
+    </div>
     <button type="submit" class="btn primary">Добавить комментарий</button>
   </form>
 </section>

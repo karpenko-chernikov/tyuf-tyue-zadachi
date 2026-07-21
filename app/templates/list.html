@@ -20,7 +20,7 @@
     <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select>
-  <button type="submit">Фильтр</button>
+  <button type="submit" class="btn secondary">Фильтр</button>
   <a href="/" class="btn secondary">Сбросить</a>
   <span class="filters-export muted">Выгрузка по фильтру:</span>
   <a class="btn secondary" href="/export/txt?q={{ q|urlencode }}&naznachenie={{ naznachenie|urlencode }}&status={{ status_filter|urlencode }}">TXT</a>

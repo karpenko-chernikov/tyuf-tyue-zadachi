@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import file_picker, attachment_list %}
 {% block title %}{% if task %}Редактирование{% else %}Новая задача{% endif %}{% endblock %}
 {% block content %}
 {% set f = form or {} %}
@@ -50,24 +51,11 @@
       <textarea name="condition" rows="8" required>{% if f.condition is defined %}{{ f.condition }}{% elif task %}{{ task.condition or '' }}{% else %}{{ p.condition or '' }}{% endif %}</textarea>
     </label>
 
-    <label>Файлы к условию
-      <span class="hint">фото, PDF, схемы — до 15 МБ каждый, можно несколько</span>
-      <input type="file" name="task_files" multiple>
-    </label>
-    {% if task_files %}
-    <ul class="file-list">
-      {% for a in task_files %}
-      <li>
-        <a href="/files/{{ a.id }}">{{ a.filename }}</a>
-        <span class="muted">{{ format_size(a.size) }}</span>
-        <form method="post" action="/files/{{ a.id }}/delete" class="inline-form"
-              onsubmit="return confirm('Удалить файл «{{ a.filename }}»?')">
-          <button type="submit" class="btn-link-danger">Удалить</button>
-        </form>
-      </li>
-      {% endfor %}
-    </ul>
-    {% endif %}
+    <div class="field-block">
+      <div class="field-label">Файлы к условию</div>
+      {{ file_picker('task_files') }}
+      {{ attachment_list(task_files) }}
+    </div>
 
     <div class="grid-3">
       <label>Автор задачи *

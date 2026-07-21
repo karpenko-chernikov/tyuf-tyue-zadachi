@@ -30,5 +30,50 @@
   <main class="{% block main_class %}container{% endblock %}">
     {% block content %}{% endblock %}
   </main>
+  <script>
+  document.querySelectorAll('[data-file-drop]').forEach((wrap) => {
+    const input = wrap.querySelector('.file-drop-input');
+    const chosen = wrap.querySelector('[data-file-chosen]');
+    const zone = wrap.querySelector('.file-drop-zone');
+    if (!input || !chosen) return;
+
+    const refresh = () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) {
+        chosen.textContent = 'Файлы не выбраны';
+        wrap.classList.remove('has-files');
+        return;
+      }
+      wrap.classList.add('has-files');
+      if (files.length === 1) {
+        chosen.textContent = files[0].name;
+      } else {
+        chosen.textContent = files.length + ' файла: ' + files.map(f => f.name).join(', ');
+      }
+    };
+
+    input.addEventListener('change', refresh);
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      zone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        wrap.classList.add('is-dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      zone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        wrap.classList.remove('is-dragover');
+      });
+    });
+    zone.addEventListener('drop', (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+      const dt = new DataTransfer();
+      Array.from(e.dataTransfer.files).forEach((f) => dt.items.add(f));
+      input.files = dt.files;
+      refresh();
+    });
+  });
+  </script>
 </body>
 </html>
