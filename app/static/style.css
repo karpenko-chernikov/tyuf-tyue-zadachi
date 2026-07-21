@@ -208,11 +208,12 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.06em;
 }
 .table tbody tr:nth-child(odd) td { background: #ffffff; }
-.table tbody tr:nth-child(even) td { background: #e4efe9; }
+.table tbody tr:nth-child(even) td { background: #e8f1ec; }
 .table tr:last-child td { border-bottom: none; }
 .table tr.clickable { cursor: pointer; }
 .table tr.clickable:hover td {
-  background: #cfe6db !important;
+  background: #fff4e5 !important;
+  box-shadow: inset 3px 0 0 var(--brand);
 }
 .table-count { margin-top: 12px; }
 
