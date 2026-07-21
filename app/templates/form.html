@@ -42,7 +42,11 @@
     </div>
 
     <label>Название
-      <span class="hint">если пусто — коротко подставится из условия</span>
+      {% if ai_title_enabled %}
+      <span class="hint">если пусто — нейросеть придумает короткое по условию</span>
+      {% else %}
+      <span class="hint">если пусто — коротко подставится из условия (для нейросети добавьте OPENAI_API_KEY в .env)</span>
+      {% endif %}
       <input type="text" name="title"
         value="{% if f.title is defined %}{{ f.title }}{% elif task %}{{ task.title or '' }}{% else %}{{ p.title or '' }}{% endif %}">
     </label>

@@ -24,6 +24,7 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
+from app.ai import ai_title_enabled, suggest_title
 from app.files import format_size, is_image_attachment, save_uploads
 from app.history import (
     action_label,
@@ -44,7 +45,6 @@ from app.utils import (
     parse_datetime_local,
     parse_paste,
     status_pill_class,
-    title_from_condition,
 )
 
 router = APIRouter()
@@ -181,6 +181,7 @@ def _form_context(db: Session, **extra):
         "pending_status": None,
         "cancel_url": None,
         "task_files": [],
+        "ai_title_enabled": ai_title_enabled(),
     }
     ctx.update(extra)
     return ctx
@@ -556,7 +557,7 @@ def _build_task_from_form(
 
     task = db.get(Task, task_id) if task_id else Task()
     task.idea_number = idea_num
-    task.title = title.strip() or title_from_condition(condition) or None
+    task.title = title.strip() or suggest_title(condition) or None
     task.condition = condition.strip() or None
     task.formulirovka = formulirovka.strip() or None
     task.itogovaya_formulirovka = itogovaya_formulirovka.strip() or None
