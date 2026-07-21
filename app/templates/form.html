@@ -42,11 +42,7 @@
     </div>
 
     <label class="title-field">Название
-      {% if ai_title_enabled %}
-      <span class="hint">«Сгенерировать» — через {{ ai_provider_label }} по тексту условия</span>
-      {% else %}
-      <span class="hint">«Сгенерировать» — из текста условия. Для DeepSeek добавьте DEEPSEEK_API_KEY в .env</span>
-      {% endif %}
+      <span class="hint">или нажмите «Сгенерировать» по тексту условия</span>
       <div class="title-row">
         <input type="text" name="title" id="title-input"
           value="{% if f.title is defined %}{{ f.title }}{% elif task %}{{ task.title or '' }}{% else %}{{ p.title or '' }}{% endif %}"

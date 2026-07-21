@@ -1,7 +1,7 @@
-"""Генерация короткого названия задачи.
+"""Генерация короткого названия задачи через DeepSeek.
 
-Предпочтительно DeepSeek (дешёвый/почти бесплатный).
-Иначе OpenAI. Если ключей нет или ошибка — эвристика из текста условия.
+DeepSeek — основной провайдер. OpenAI только как запасной вариант.
+Если ключей нет или ошибка API — эвристика из текста условия.
 """
 
 from __future__ import annotations
@@ -12,16 +12,16 @@ import urllib.request
 
 from app.utils import title_from_condition
 
-# DeepSeek: https://platform.deepseek.com — ключ бесплатно, на старте дают кредиты
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
+# Запасной вариант, если DeepSeek недоступен
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_MODEL = "gpt-4o-mini"
 
 
 def _provider() -> tuple[str, str, str] | None:
-    """Вернёт (name, api_key, url) или None."""
+    """Всегда предпочитаем DeepSeek."""
     deepseek = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if deepseek:
         return ("deepseek", deepseek, DEEPSEEK_URL)
@@ -38,7 +38,7 @@ def ai_title_enabled() -> bool:
 def ai_provider_label() -> str:
     p = _provider()
     if not p:
-        return ""
+        return "DeepSeek"
     return "DeepSeek" if p[0] == "deepseek" else "OpenAI"
 
 
