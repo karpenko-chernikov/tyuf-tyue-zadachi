@@ -30,7 +30,7 @@
       <label>Номер идеи
         <input type="number" name="idea_number"
           value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}">
-        <span class="hint">Можно повторять: вторая задача с тем же номером покажется как 15(2)</span>
+        <span class="hint">Можно повторять тот же номер — вторая задача сама станет 15(2). В поле пишите только число, например 15</span>
       </label>
       <label>Дата и время в Telegram *
         <input type="datetime-local" name="telegram_datetime" required
@@ -117,9 +117,9 @@
     {% set show_igraetsya = status_val == 'igraetsya' %}
     <div id="igraetsya-fields" class="{% if not show_igraetsya %}hidden{% endif %}">
       <h3>Играется в турнире</h3>
-      <label>Итоговая формулировка *
-        <textarea name="itogovaya_formulirovka" rows="6" required
-          id="itogovaya-input">{% if f.itogovaya_formulirovka is defined %}{{ f.itogovaya_formulirovka }}{% elif task %}{{ task.itogovaya_formulirovka or '' }}{% endif %}</textarea>
+      <label>Итоговая формулировка {% if status_val == 'igraetsya' %}*{% endif %}
+        <textarea name="itogovaya_formulirovka" rows="6" id="itogovaya-input"
+          {% if status_val == 'igraetsya' %}required{% endif %}>{% if f.itogovaya_formulirovka is defined %}{{ f.itogovaya_formulirovka }}{% elif task %}{{ task.itogovaya_formulirovka or '' }}{% endif %}</textarea>
       </label>
       <div id="igraetsya-regular" class="grid-3 {% if nazn_val == 'kapitany' %}hidden{% endif %}">
         {% set turnir_val = f.turnir if f.turnir is defined else (task.turnir if task else '') %}
@@ -214,11 +214,14 @@ function syncFields() {
   igraetsyaKk.classList.toggle('hidden', !isKk);
   if (itogovayaInput) itogovayaInput.required = showIgra;
 
+  // Скрытые поля не должны блокировать сохранение (HTML5 required)
   igraetsyaRegular.querySelectorAll('input, select').forEach(el => {
     el.disabled = isKk || !showIgra;
+    if ('required' in el) el.required = false;
   });
   igraetsyaKk.querySelectorAll('input, select').forEach(el => {
     el.disabled = !isKk || !showIgra;
+    if ('required' in el) el.required = false;
   });
 }
 

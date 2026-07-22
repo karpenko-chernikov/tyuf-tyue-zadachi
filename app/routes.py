@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import change_password, login_required
@@ -563,14 +564,22 @@ def _build_task_from_form(
                 "Измените дату и время в Telegram — сейчас стоит значение из последней задачи"
             )
 
-    other = _task_with_telegram_datetime(db, tg_dt, exclude_id=task_id)
-    if other:
-        attach_idea_occurrences(db, [other])
-        label = format_idea_label(other)
-        raise ValueError(
-            f"Уже есть задача ({label}) с такой же датой и временем в Telegram — "
-            f"укажите другое время"
-        )
+    # Уникальность даты: при создании всегда; при правке — только если дату поменяли
+    datetime_unchanged = False
+    if task_id is not None:
+        current = db.get(Task, task_id)
+        if current and current.telegram_datetime:
+            datetime_unchanged = _telegram_dt_minute(current.telegram_datetime) == tg_dt
+
+    if not datetime_unchanged:
+        other = _task_with_telegram_datetime(db, tg_dt, exclude_id=task_id)
+        if other:
+            attach_idea_occurrences(db, [other])
+            label = format_idea_label(other)
+            raise ValueError(
+                f"Уже есть задача ({label}) с такой же датой и временем в Telegram — "
+                f"укажите другое время"
+            )
 
     if not condition.strip():
         raise ValueError("Заполните условие задачи")
@@ -579,7 +588,13 @@ def _build_task_from_form(
     if not naznachenie.strip():
         raise ValueError("Выберите назначение")
 
-    idea_num = int(idea_number) if idea_number.strip() else None
+    try:
+        idea_num = int(idea_number.strip()) if idea_number.strip() else None
+    except ValueError:
+        raise ValueError(
+            "Номер идеи должен быть целым числом (например 15). "
+            "Суффикс (2) появится сам, если такой номер уже есть"
+        )
 
     if status == Status.METODKOM.value and naznachenie not in METODKOM_ONLY_FOR:
         raise ValueError("Статус «Отправлена в методкомиссию» только для ТЮФ / ТЮФ и ТЮЕ")
@@ -937,6 +952,42 @@ async def update_task(
             record_file_added(db, task.id, user, att.filename, for_comment=False)
         db.commit()
         return RedirectResponse(f"/tasks/{task_id}", status_code=303)
+    except IntegrityError:
+        db.rollback()
+        form = {
+            "idea_number": idea_number,
+            "title": title,
+            "condition": condition,
+            "author": author,
+            "naznachenie": naznachenie,
+            "status": status,
+            "proverena": proverena,
+            "has_video": has_video,
+            "video_url": video_url,
+            "sources": sources,
+            "telegram_datetime": telegram_datetime,
+            "formulirovka": formulirovka,
+            "itogovaya_formulirovka": itogovaya_formulirovka,
+            "turnir": turnir,
+            "turnir_year": turnir_year,
+            "task_number": task_number,
+            "etap_kk": etap_kk,
+        }
+        task_files_existing = [a for a in task.attachments if a.comment_id is None]
+        return templates.TemplateResponse(
+            request,
+            "form.html",
+            _form_context(
+                db,
+                user=user,
+                task=task,
+                form=form,
+                error="Не удалось сохранить (конфликт данных). Попробуйте ещё раз или измените дату в Telegram.",
+                status_labels=_available_statuses(naznachenie),
+                task_files=task_files_existing,
+            ),
+            status_code=400,
+        )
     except ValueError as e:
         db.rollback()
         form = {
