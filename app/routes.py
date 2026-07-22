@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
@@ -63,12 +63,21 @@ templates.env.globals["format_idea_label"] = format_idea_label
 templates.env.globals["format_idea_title"] = format_idea_title
 
 
-def _normalize_uploads(files: Optional[list[UploadFile] | UploadFile]) -> list[UploadFile]:
-    if not files:
-        return []
-    if isinstance(files, list):
-        return files
-    return [files]
+def _uploads_from_form_list(raw) -> list[UploadFile]:
+    uploads: list[UploadFile] = []
+    if not raw:
+        return uploads
+    items = raw if isinstance(raw, list) else [raw]
+    for item in items:
+        if isinstance(item, UploadFile) and item.filename:
+            uploads.append(item)
+    return uploads
+
+
+async def _uploads_from_request(request: Request, field: str) -> list[UploadFile]:
+    """Достаём файлы из multipart без File(...), чтобы пустые поля не давали 422."""
+    form = await request.form()
+    return _uploads_from_form_list(form.getlist(field))
 
 # Поля, которые очищаем при уходе со статуса «играется»
 _IGRAETSYA_ONLY_FIELDS = (
@@ -691,7 +700,6 @@ async def create_task(
     comment_authors: list[str] = Form(default=[]),
     comment_texts: list[str] = Form(default=[]),
     after: str = Form(""),
-    task_files: Optional[list[UploadFile]] = File(None),
 ):
     user = login_required(request)
     if not user:
@@ -726,7 +734,7 @@ async def create_task(
             db,
             task_id=task.id,
             comment_id=None,
-            uploads=_normalize_uploads(task_files),
+            uploads=await _uploads_from_request(request, "task_files"),
             uploaded_by=user,
         ):
             record_file_added(db, task.id, user, att.filename, for_comment=False)
@@ -908,7 +916,6 @@ async def update_task(
     turnir_year: str = Form(""),
     task_number: str = Form(""),
     etap_kk: str = Form(""),
-    task_files: Optional[list[UploadFile]] = File(None),
 ):
     user = login_required(request)
     if not user:
@@ -946,7 +953,7 @@ async def update_task(
             db,
             task_id=task.id,
             comment_id=None,
-            uploads=_normalize_uploads(task_files),
+            uploads=await _uploads_from_request(request, "task_files"),
             uploaded_by=user,
         ):
             record_file_added(db, task.id, user, att.filename, for_comment=False)
@@ -1034,7 +1041,6 @@ async def add_comment(
     db: Session = Depends(get_db),
     text: str = Form(""),
     author: str = Form(...),
-    comment_files: Optional[list[UploadFile]] = File(None),
 ):
     user = login_required(request)
     if not user:
@@ -1045,8 +1051,8 @@ async def add_comment(
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     text_clean = (text or "").strip()
-    uploads = _normalize_uploads(comment_files)
-    has_files = any(u and u.filename for u in uploads)
+    uploads = await _uploads_from_request(request, "comment_files")
+    has_files = bool(uploads)
 
     # Можно: только текст, только файлы, или и то и другое
     if not text_clean and not has_files:

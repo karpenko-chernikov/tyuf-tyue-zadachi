@@ -75,6 +75,17 @@
       refresh();
     });
   });
+
+  // Пустой <input type="file"> в multipart ломает сохранение (FastAPI 422)
+  document.querySelectorAll('form[enctype="multipart/form-data"]').forEach((form) => {
+    form.addEventListener('submit', () => {
+      form.querySelectorAll('input[type="file"]').forEach((input) => {
+        if (!input.files || input.files.length === 0) {
+          input.disabled = true;
+        }
+      });
+    });
+  });
   </script>
 </body>
 </html>
