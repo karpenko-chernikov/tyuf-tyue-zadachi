@@ -41,9 +41,11 @@ from app.history import (
 )
 from app.models import Attachment, Comment, Task
 from app.utils import (
+    attach_idea_occurrences,
     author_pill_class,
     format_igraetsya,
     format_idea_label,
+    format_idea_title,
     parse_datetime_local,
     parse_paste,
     status_pill_class,
@@ -57,6 +59,7 @@ templates.env.globals["author_pill_class"] = author_pill_class
 templates.env.globals["status_pill_class"] = status_pill_class
 templates.env.globals["format_igraetsya"] = format_igraetsya
 templates.env.globals["format_idea_label"] = format_idea_label
+templates.env.globals["format_idea_title"] = format_idea_title
 
 
 def _normalize_uploads(files: Optional[list[UploadFile] | UploadFile]) -> list[UploadFile]:
@@ -324,6 +327,7 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
         .order_by(Task.idea_number.asc().nullslast(), Task.id.desc())
         .all()
     )
+    attach_idea_occurrences(db, tasks)
 
     tasks_by_status = {s.value: [] for s in columns}
     for task in tasks:
@@ -462,6 +466,7 @@ def task_list(
         active_order = ""
 
     tasks = query.all()
+    attach_idea_occurrences(db, tasks)
     return templates.TemplateResponse(
         request,
         "list.html",
@@ -560,6 +565,7 @@ def _build_task_from_form(
 
     other = _task_with_telegram_datetime(db, tg_dt, exclude_id=task_id)
     if other:
+        attach_idea_occurrences(db, [other])
         label = format_idea_label(other)
         raise ValueError(
             f"Уже есть задача ({label}) с такой же датой и временем в Telegram — "
@@ -574,13 +580,6 @@ def _build_task_from_form(
         raise ValueError("Выберите назначение")
 
     idea_num = int(idea_number) if idea_number.strip() else None
-
-    if idea_num is not None:
-        existing = db.query(Task).filter(Task.idea_number == idea_num)
-        if task_id:
-            existing = existing.filter(Task.id != task_id)
-        if existing.first():
-            raise ValueError(f"Идея № {idea_num} уже существует")
 
     if status == Status.METODKOM.value and naznachenie not in METODKOM_ONLY_FOR:
         raise ValueError("Статус «Отправлена в методкомиссию» только для ТЮФ / ТЮФ и ТЮЕ")
@@ -799,6 +798,7 @@ def task_detail(
         })
 
     task_files = [a for a in task.attachments if a.comment_id is None]
+    attach_idea_occurrences(db, [task])
 
     return templates.TemplateResponse(
         request,
@@ -813,6 +813,7 @@ def task_detail(
             "proverena_labels": PROVERENA_LABELS,
             "format_igraetsya": format_igraetsya,
             "format_idea_label": format_idea_label,
+            "format_idea_title": format_idea_title,
             "authors": _author_suggestions(db),
             "default_comment_author": DEFAULT_COMMENT_AUTHOR,
             "history": history,

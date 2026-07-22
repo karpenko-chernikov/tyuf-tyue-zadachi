@@ -32,6 +32,23 @@ def _ensure_columns():
         if "archived" not in cols:
             conn.execute(text("ALTER TABLE tasks ADD COLUMN archived BOOLEAN DEFAULT 0 NOT NULL"))
 
+    # Разрешаем одинаковые номера идей (раньше был UNIQUE)
+    with engine.begin() as conn:
+        indexes = conn.execute(text("PRAGMA index_list('tasks')")).fetchall()
+        for row in indexes:
+            # row: seq, name, unique, origin, partial
+            name = row[1]
+            is_unique = bool(row[2])
+            if not is_unique:
+                continue
+            cols_info = conn.execute(text(f"PRAGMA index_info('{name}')")).fetchall()
+            col_names = [c[2] for c in cols_info]
+            if col_names == ["idea_number"]:
+                conn.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_tasks_idea_number ON tasks (idea_number)")
+        )
+
 
 _ensure_columns()
 

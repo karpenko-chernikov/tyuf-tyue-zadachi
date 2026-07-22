@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "macros.html" import file_picker, attachment_list %}
-{% block title %}{% if task.idea_number %}Идея № {{ task.idea_number }}{% else %}Нет номера идеи{% endif %}{% endblock %}
+{% block title %}{{ format_idea_title(task) }}{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>
-    {% if task.idea_number %}Идея № {{ task.idea_number }}{% else %}Нет номера идеи{% endif %}
+    {{ format_idea_title(task) }}
     {% if task.title %}<span class="subtitle">{{ task.title }}</span>{% endif %}
   </h1>
   <div class="actions-inline">

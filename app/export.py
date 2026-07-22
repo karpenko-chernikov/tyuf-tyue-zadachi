@@ -12,7 +12,7 @@ from app.enums import (
     ETAP_LABELS,
 )
 from app.models import Comment, Task
-from app.utils import format_igraetsya, format_idea_label
+from app.utils import attach_idea_occurrences, format_igraetsya, format_idea_label
 
 
 def _dt(dt):
@@ -33,9 +33,10 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
             .all()
         )
 
+    attach_idea_occurrences(db, tasks)
     blocks = []
     for task in tasks:
-        header = f"=== Идея № {task.idea_number} ===" if task.idea_number else "=== Нет номера идеи ==="
+        header = f"=== {format_idea_label(task)} ==="
 
         lines = [
             header,
@@ -112,6 +113,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             .all()
         )
 
+    attach_idea_occurrences(db, tasks)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -150,7 +152,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             a.filename for a in (task.attachments or []) if a.comment_id is None
         )
         writer.writerow([
-            task.idea_number or "",
+            format_idea_label(task) if task.idea_number is not None else "",
             task.id,
             task.title or "",
             NAZNACHENIE_LABELS.get(task.naznachenie or "", ""),

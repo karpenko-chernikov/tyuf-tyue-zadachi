@@ -146,15 +146,61 @@ def format_igraetsya(task):
 
 
 def format_idea_label(task) -> str:
-    if task.idea_number is not None:
-        return f"№ {task.idea_number}"
-    return "Нет номера идеи"
+    if task.idea_number is None:
+        return "Нет номера идеи"
+    return f"№ {_idea_number_text(task)}"
 
 
 def format_idea_title(task) -> str:
-    if task.idea_number is not None:
-        return f"Идея № {task.idea_number}"
-    return "Нет номера идеи"
+    if task.idea_number is None:
+        return "Нет номера идеи"
+    return f"Идея № {_idea_number_text(task)}"
+
+
+def _idea_number_text(task) -> str:
+    num = task.idea_number
+    occ = getattr(task, "idea_occurrence", None)
+    if occ is not None and occ > 1:
+        return f"{num}({occ})"
+    return str(num)
+
+
+def idea_occurrences_map(db, tasks) -> dict[int, int]:
+    """task.id → порядковый номер среди задач с тем же idea_number (1, 2, 3…)."""
+    from app.models import Task
+
+    nums = {t.idea_number for t in tasks if t is not None and t.idea_number is not None}
+    if not nums:
+        return {}
+    rows = (
+        db.query(Task.id, Task.idea_number)
+        .filter(Task.idea_number.in_(nums))
+        .order_by(
+            Task.idea_number.asc(),
+            Task.telegram_datetime.asc().nullslast(),
+            Task.id.asc(),
+        )
+        .all()
+    )
+    result: dict[int, int] = {}
+    counters: dict[int, int] = {}
+    for tid, num in rows:
+        counters[num] = counters.get(num, 0) + 1
+        result[tid] = counters[num]
+    return result
+
+
+def attach_idea_occurrences(db, tasks) -> None:
+    """Вешает task.idea_occurrence для корректного отображения 15(2)."""
+    if not tasks:
+        return
+    seq = list(tasks) if not isinstance(tasks, list) else tasks
+    occ = idea_occurrences_map(db, seq)
+    for t in seq:
+        if t is None:
+            continue
+        t.idea_occurrence = occ.get(t.id, 1) if t.idea_number is not None else None
+
 
 
 def author_pill_class(name: str | None) -> str:

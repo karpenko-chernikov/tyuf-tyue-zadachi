@@ -30,7 +30,7 @@
       <label>Номер идеи
         <input type="number" name="idea_number"
           value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}">
-        <span class="hint">Можно оставить пустым — будет «Нет номера идеи»</span>
+        <span class="hint">Можно повторять: вторая задача с тем же номером покажется как 15(2)</span>
       </label>
       <label>Дата и время в Telegram *
         <input type="datetime-local" name="telegram_datetime" required

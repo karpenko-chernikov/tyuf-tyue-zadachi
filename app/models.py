@@ -10,7 +10,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    idea_number = Column(Integer, unique=True, nullable=True, index=True)
+    idea_number = Column(Integer, nullable=True, index=True)
     title = Column(String(500), nullable=True)
     condition = Column(Text, nullable=True)
     formulirovka = Column(Text, nullable=True)
