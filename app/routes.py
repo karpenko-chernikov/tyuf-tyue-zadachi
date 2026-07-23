@@ -30,7 +30,14 @@ from app.enums import (
     normalize_author,
 )
 from app.export import export_tasks_csv, export_tasks_txt
-from app.files import format_size, is_image_attachment, save_local_files, save_uploads
+from app.files import (
+    attachment_media_type,
+    format_size,
+    is_image_attachment,
+    is_video_attachment,
+    save_local_files,
+    save_uploads,
+)
 from app.history import (
     action_label,
     parse_changes,
@@ -64,6 +71,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["format_size"] = format_size
 templates.env.globals["is_image_attachment"] = is_image_attachment
+templates.env.globals["is_video_attachment"] = is_video_attachment
 templates.env.globals["author_pill_class"] = author_pill_class
 templates.env.globals["status_pill_class"] = status_pill_class
 templates.env.globals["format_igraetsya"] = format_igraetsya
@@ -1205,14 +1213,46 @@ def download_file(
     quoted = quote(att.filename)
     force_download = download in ("1", "true", "yes")
     as_image = is_image_attachment(att) and not force_download
-    disposition = "attachment" if force_download or not as_image else "inline"
+    as_video = is_video_attachment(att) and not force_download
+    inline = as_image or as_video
+    disposition = "inline" if inline else "attachment"
+    media = attachment_media_type(att)
+    data = bytes(att.data)
+    size = len(data)
+
     headers = {
         "Content-Disposition": f"{disposition}; filename*=UTF-8''{quoted}",
         "Cache-Control": "private, max-age=3600",
+        "Accept-Ranges": "bytes",
     }
-    media = att.content_type or ("image/jpeg" if as_image else "application/octet-stream")
+
+    # HTML5 <video> часто запрашивает Range — без этого перемотка не работает
+    range_header = request.headers.get("range") if as_video else None
+    if range_header and range_header.startswith("bytes="):
+        try:
+            unit, _, rng = range_header.partition("=")
+            start_s, _, end_s = rng.partition("-")
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else size - 1
+            end = min(end, size - 1)
+            if start < 0 or start > end or start >= size:
+                raise ValueError("bad range")
+            chunk = data[start : end + 1]
+            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+            headers["Content-Length"] = str(len(chunk))
+            return Response(
+                content=chunk,
+                status_code=206,
+                media_type=media,
+                headers=headers,
+            )
+        except ValueError:
+            headers["Content-Range"] = f"bytes */{size}"
+            return Response(status_code=416, headers=headers)
+
+    headers["Content-Length"] = str(size)
     return Response(
-        content=bytes(att.data),
+        content=data,
         media_type=media,
         headers=headers,
     )
@@ -1358,7 +1398,15 @@ def import_media_preview(
         raise HTTPException(status_code=404, detail="Файл не найден")
     from fastapi.responses import FileResponse
 
-    return FileResponse(file_path, filename=file_path.name)
+    from app.files import guess_content_type
+
+    media = guess_content_type(file_path.name) or "application/octet-stream"
+    # без filename → inline (превью картинок/видео в импорте)
+    return FileResponse(
+        file_path,
+        media_type=media,
+        content_disposition_type="inline",
+    )
 
 
 def _resolve_link_to_task_id(link_to: str, draft_to_task: dict[str, int], db: Session) -> int | None:

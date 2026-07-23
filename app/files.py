@@ -135,6 +135,7 @@ def format_size(n: int) -> str:
 
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
+_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".ogg", ".ogv"}
 
 
 def is_image_attachment(att) -> bool:
@@ -143,3 +144,26 @@ def is_image_attachment(att) -> bool:
         return True
     name = (getattr(att, "filename", None) or "").lower()
     return any(name.endswith(ext) for ext in _IMAGE_EXTENSIONS)
+
+
+def is_video_attachment(att) -> bool:
+    ctype = (getattr(att, "content_type", None) or "").lower()
+    if ctype.startswith("video/"):
+        return True
+    name = (getattr(att, "filename", None) or "").lower()
+    return any(name.endswith(ext) for ext in _VIDEO_EXTENSIONS)
+
+
+def attachment_media_type(att) -> str:
+    """MIME для отдачи файла браузеру (превью / плеер)."""
+    ctype = (getattr(att, "content_type", None) or "").strip()
+    if ctype and ctype.lower() != "application/octet-stream":
+        return ctype
+    guessed = guess_content_type(getattr(att, "filename", None) or "")
+    if guessed:
+        return guessed
+    if is_image_attachment(att):
+        return "image/jpeg"
+    if is_video_attachment(att):
+        return "video/mp4"
+    return "application/octet-stream"

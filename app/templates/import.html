@@ -145,8 +145,11 @@
             <a href="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}" target="_blank" rel="noopener">
               <img src="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}" alt="{{ name }}" loading="lazy">
             </a>
-            {% elif low.endswith('.mp4') or low.endswith('.mov') or low.endswith('.webm') %}
-            <div class="import-media-video">видео</div>
+            {% elif export_root and (low.endswith('.mp4') or low.endswith('.mov') or low.endswith('.webm') or low.endswith('.m4v')) %}
+            <div class="import-media-video-wrap">
+              <video controls preload="metadata" playsinline
+                src="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}"></video>
+            </div>
             {% else %}
             <div class="import-media-file">файл</div>
             {% endif %}

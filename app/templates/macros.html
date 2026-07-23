@@ -28,7 +28,7 @@
 
 {% macro file_picker(name, hint='Несколько сразу: ⌘/Ctrl+клик или Shift · до 15 МБ каждый') %}
 <div class="file-drop" data-file-drop>
-  <input type="file" name="{{ name }}" id="{{ name }}" multiple class="file-drop-input" accept="image/*,.pdf,.doc,.docx,.txt,.zip">
+  <input type="file" name="{{ name }}" id="{{ name }}" multiple class="file-drop-input" accept="image/*,video/*,.mp4,.mov,.webm,.pdf,.doc,.docx,.txt,.zip">
   <label for="{{ name }}" class="file-drop-zone">
     <span class="file-drop-icon" aria-hidden="true">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -52,11 +52,18 @@
 <ul class="file-list{% if compact %} file-list-compact{% endif %}">
   {% for a in items %}
   {% set is_img = is_image_attachment(a) %}
-  <li class="file-chip{% if is_img %} file-chip-image{% endif %}">
+  {% set is_vid = is_video_attachment(a) %}
+  <li class="file-chip{% if is_img %} file-chip-image{% elif is_vid %} file-chip-video{% endif %}">
     {% if is_img %}
     <a class="file-preview" href="/files/{{ a.id }}" target="_blank" rel="noopener" title="Открыть полностью">
       <img src="/files/{{ a.id }}" alt="{{ a.filename }}" loading="lazy">
     </a>
+    {% elif is_vid %}
+    <div class="file-preview file-preview-video">
+      <video controls preload="metadata" playsinline src="/files/{{ a.id }}">
+        Ваш браузер не умеет воспроизводить это видео.
+      </video>
+    </div>
     {% else %}
     <span class="file-chip-icon" aria-hidden="true">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -66,9 +73,9 @@
     </span>
     {% endif %}
     <div class="file-chip-body">
-      <a class="file-chip-name" href="/files/{{ a.id }}{% if not is_img %}?download=1{% endif %}" {% if is_img %}target="_blank" rel="noopener"{% endif %}>{{ a.filename }}</a>
+      <a class="file-chip-name" href="/files/{{ a.id }}{% if is_img or is_vid %}{% else %}?download=1{% endif %}" {% if is_img or is_vid %}target="_blank" rel="noopener"{% endif %}>{{ a.filename }}</a>
       <span class="file-chip-meta">
-        {{ format_size(a.size) }}
+        {{ format_size(a.size) }}{% if is_vid %} · видео{% endif %}
         {% if a.uploaded_by %} · {{ a.uploaded_by }}{% endif %}
       </span>
     </div>
