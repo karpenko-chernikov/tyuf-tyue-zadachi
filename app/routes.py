@@ -693,20 +693,50 @@ def _build_task_from_form(
     return task
 
 
-def _add_initial_comments(db: Session, task: Task, authors, texts, default_user: str):
+async def _add_initial_comments(
+    db: Session,
+    task: Task,
+    authors,
+    texts,
+    default_user: str,
+    request: Request,
+) -> None:
     if not isinstance(authors, list):
         authors = [authors] if authors else []
     if not isinstance(texts, list):
         texts = [texts] if texts else []
-    # выровнять длины
-    n = max(len(authors), len(texts))
+
+    form = await request.form()
+    file_indices: list[int] = []
+    for key in form.keys():
+        key_s = str(key)
+        if key_s.startswith("comment_files_"):
+            suffix = key_s.removeprefix("comment_files_")
+            if suffix.isdigit():
+                file_indices.append(int(suffix))
+    n = max(len(authors), len(texts), 0)
+    if file_indices:
+        n = max(n, max(file_indices) + 1)
+
     for i in range(n):
         text = (texts[i] if i < len(texts) else "").strip()
-        if not text:
+        uploads = _uploads_from_form_list(form.getlist(f"comment_files_{i}"))
+        if not text and not uploads:
             continue
         author = (authors[i] if i < len(authors) else "").strip() or DEFAULT_COMMENT_AUTHOR
-        db.add(Comment(task_id=task.id, text=text, author=author))
-        record_comment_added(db, task.id, default_user, author, text)
+        comment = Comment(task_id=task.id, text=text, author=author)
+        db.add(comment)
+        db.flush()
+        summary = text if text else "(только файл)"
+        record_comment_added(db, task.id, default_user, author, summary)
+        for att in await save_uploads(
+            db,
+            task_id=task.id,
+            comment_id=comment.id,
+            uploads=uploads,
+            uploaded_by=default_user,
+        ):
+            record_file_added(db, task.id, default_user, att.filename, for_comment=True)
 
 
 @router.post("/tasks")
@@ -762,7 +792,7 @@ async def create_task(
         )
         db.flush()
         record_created(db, task, user)
-        _add_initial_comments(db, task, comment_authors, comment_texts, user)
+        await _add_initial_comments(db, task, comment_authors, comment_texts, user, request)
         for att in await save_uploads(
             db,
             task_id=task.id,

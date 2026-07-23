@@ -155,7 +155,7 @@
     {% if not task %}
     <div class="comments-create">
       <h3>Комментарии</h3>
-      <p class="muted">Можно сразу сохранить отзывы — у каждого свой автор. Необязательно.</p>
+      <p class="muted">Можно сразу сохранить отзывы — у каждого свой автор и файлы. Необязательно.</p>
       <div id="comment-rows">
         {% set draft_comments = f.comments if f.comments else [{'author': default_comment_author, 'text': ''}] %}
         {% for c in draft_comments %}
@@ -165,8 +165,13 @@
             {{ author_field('comment_authors', c.author or '', 'Имя нового автора', false) }}
           </label>
           <label>Текст
+            <span class="hint">необязательно, если есть файлы</span>
             <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…">{{ c.text }}</textarea>
           </label>
+          <div class="field-block">
+            <div class="field-label">Файлы</div>
+            {{ file_picker('comment_files_' ~ loop.index0, 'Можно без текста · несколько сразу · до 15 МБ') }}
+          </div>
         </div>
         {% endfor %}
       </div>
@@ -228,8 +233,10 @@ syncFields();
 const addBtn = document.getElementById('add-comment-row');
 if (addBtn) {
   const authorOptions = `{% for a in authors %}<option value="{{ a }}">{{ a }}</option>{% endfor %}`;
+  let commentFileIdx = document.querySelectorAll('#comment-rows .comment-row').length;
   addBtn.addEventListener('click', () => {
     const rows = document.getElementById('comment-rows');
+    const idx = commentFileIdx++;
     const row = document.createElement('div');
     row.className = 'comment-row';
     row.innerHTML = `
@@ -246,8 +253,29 @@ if (addBtn) {
         </div>
       </label>
       <label>Текст
+        <span class="hint">необязательно, если есть файлы</span>
         <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…"></textarea>
-      </label>`;
+      </label>
+      <div class="field-block">
+        <div class="field-label">Файлы</div>
+        <div class="file-drop" data-file-drop>
+          <input type="file" name="comment_files_${idx}" id="comment_files_${idx}" multiple class="file-drop-input" accept="image/*,.pdf,.doc,.docx,.txt,.zip">
+          <label for="comment_files_${idx}" class="file-drop-zone">
+            <span class="file-drop-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </span>
+            <span class="file-drop-copy">
+              <span class="file-drop-title">Выбрать файлы</span>
+              <span class="file-drop-hint">Можно без текста · несколько сразу · до 15 МБ</span>
+              <span class="file-drop-chosen" data-file-chosen>Файлы не выбраны</span>
+            </span>
+          </label>
+        </div>
+      </div>`;
     const select = row.querySelector('[data-author-select]');
     const def = {{ default_comment_author|tojson }};
     if (select && def) {
@@ -256,6 +284,11 @@ if (addBtn) {
       }
     }
     rows.appendChild(row);
+    if (window.initFileDrops) window.initFileDrops(row);
+    if (window.syncAuthorField) {
+      const wrap = row.querySelector('[data-author-field]');
+      if (wrap) window.syncAuthorField(wrap);
+    }
   });
 }
 </script>
