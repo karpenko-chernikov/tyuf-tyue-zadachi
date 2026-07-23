@@ -66,17 +66,27 @@
   <form method="post" action="/import/commit" id="import-commit-form">
     <input type="hidden" name="row_count" value="{{ rows|length }}">
     <input type="hidden" name="export_root" value="{{ export_root or '' }}">
+    <p class="import-hint">
+      Тип подставляется автоматически — это черновик. Отметьте <strong>Обработано</strong> у строк,
+      которые уже проверили: в базу уйдут <em>только они</em>. Остальное можно добрать при следующем разборе
+      (уже сохранённые по дате Telegram не создадутся повторно).
+    </p>
     <div class="import-toolbar">
-      <button type="submit" class="btn primary">Сохранить в базу</button>
-      <button type="button" class="btn secondary" id="import-only-ideas">Оставить только идеи</button>
+      <button type="submit" class="btn primary">Сохранить обработанные</button>
+      <button type="button" class="btn secondary" id="import-mark-ideas-reviewed">Обработано: все идеи</button>
+      <button type="button" class="btn secondary" id="import-only-ideas">Остальным — «Пропустить»</button>
       <button type="button" class="btn secondary" id="import-all-skip">Всё в «Пропустить»</button>
-      <span class="muted">Строк: {{ rows|length }} · чат: {{ chat_name or '—' }}</span>
+      <span class="muted" id="import-reviewed-count">Обработано: 0 / {{ rows|length }}</span>
     </div>
 
     {% for r in rows %}
     {% set i = loop.index0 %}
     <article class="import-row kind-{{ r.kind }} conf-{{ r.confidence }}" data-import-row>
       <div class="import-row-head">
+        <label class="import-reviewed">
+          <input type="checkbox" name="reviewed_{{ i }}" value="1" data-reviewed>
+          Обработано
+        </label>
         <label>Тип
           <select name="kind_{{ i }}" data-kind>
             <option value="idea" {% if r.kind == 'idea' %}selected{% endif %}>Идея</option>
@@ -159,8 +169,7 @@
         </div>
         <label>Название *
           <input type="text" name="title_{{ i }}" value="{{ r.title or '' }}"
-            placeholder="Обязательно короткое название" data-title-input
-            {% if r.kind == 'idea' %}required{% endif %}>
+            placeholder="Обязательно короткое название" data-title-input>
         </label>
         <label>Условие
           <textarea name="condition_{{ i }}" rows="4">{{ r.condition or r.text or '' }}</textarea>
@@ -202,33 +211,62 @@
     {% endfor %}
 
     <div class="import-toolbar sticky-bottom">
-      <button type="submit" class="btn primary">Сохранить в базу</button>
+      <button type="submit" class="btn primary">Сохранить обработанные</button>
+      <span class="muted" data-reviewed-count-copy>Обработано: 0</span>
     </div>
   </form>
 </section>
 
 <script>
+const updateReviewedCount = () => {
+  const total = document.querySelectorAll('[data-import-row]').length;
+  const n = document.querySelectorAll('[data-reviewed]:checked').length;
+  const label = `Обработано: ${n} / ${total}`;
+  const el = document.getElementById('import-reviewed-count');
+  if (el) el.textContent = label;
+  document.querySelectorAll('[data-reviewed-count-copy]').forEach((node) => {
+    node.textContent = label;
+  });
+};
+
 document.querySelectorAll('[data-import-row]').forEach((row) => {
   const kindSel = row.querySelector('[data-kind]');
   const textArea = row.querySelector('textarea[name^="text_"]');
   const titleInput = row.querySelector('[data-title-input]');
+  const reviewed = row.querySelector('[data-reviewed]');
   const sync = () => {
     const kind = kindSel.value;
+    const isReviewed = !!reviewed?.checked;
     row.classList.remove('kind-idea', 'kind-comment', 'kind-media', 'kind-skip');
     row.classList.add('kind-' + kind);
+    row.classList.toggle('is-reviewed', isReviewed);
     row.querySelector('[data-panel-idea]').classList.toggle('hidden', kind !== 'idea');
     row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment' && kind !== 'media');
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
-    if (titleInput) titleInput.required = kind === 'idea';
+    // required только у обработанных идей — иначе браузер блокирует весь submit
+    if (titleInput) titleInput.required = kind === 'idea' && isReviewed;
   };
   kindSel.addEventListener('change', sync);
+  reviewed?.addEventListener('change', () => {
+    sync();
+    updateReviewedCount();
+  });
   sync();
 });
+updateReviewedCount();
 
 document.getElementById('import-commit-form')?.addEventListener('submit', (e) => {
+  const reviewedRows = [...document.querySelectorAll('[data-import-row]')].filter(
+    (row) => row.querySelector('[data-reviewed]')?.checked
+  );
+  if (!reviewedRows.length) {
+    e.preventDefault();
+    alert('Нет обработанных строк. Отметьте «Обработано» у тех, что уже проверили.');
+    return;
+  }
   const missing = [];
-  document.querySelectorAll('[data-import-row]').forEach((row) => {
+  reviewedRows.forEach((row) => {
     const kind = row.querySelector('[data-kind]')?.value;
     if (kind !== 'idea') return;
     const title = row.querySelector('[data-title-input]');
@@ -243,7 +281,11 @@ document.getElementById('import-commit-form')?.addEventListener('submit', (e) =>
     e.preventDefault();
     missing[0].focus();
     missing[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-    alert(`Укажите название у всех идей перед сохранением (пусто: ${missing.length}).`);
+    alert(`У обработанных идей укажите название (пусто: ${missing.length}).`);
+    return;
+  }
+  if (!confirm(`Сохранить в базу ${reviewedRows.length} обработанных строк? Остальные не трогаем.`)) {
+    e.preventDefault();
   }
 });
 
@@ -261,6 +303,17 @@ document.getElementById('import-only-ideas')?.addEventListener('click', () => {
       sel.dispatchEvent(new Event('change'));
     }
   });
+});
+document.getElementById('import-mark-ideas-reviewed')?.addEventListener('click', () => {
+  document.querySelectorAll('[data-import-row]').forEach((row) => {
+    const sel = row.querySelector('[data-kind]');
+    const box = row.querySelector('[data-reviewed]');
+    if (sel?.value === 'idea' && box) {
+      box.checked = true;
+      box.dispatchEvent(new Event('change'));
+    }
+  });
+  updateReviewedCount();
 });
 </script>
 {% endif %}

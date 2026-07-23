@@ -1032,6 +1032,25 @@ textarea { resize: vertical; }
   overflow: auto;
 }
 .import-row.kind-media { border-left: 4px solid #8a6d3b; }
+.import-row.is-reviewed {
+  box-shadow: inset 0 0 0 2px rgba(46, 125, 90, 0.35);
+  background: #f7fbf8;
+}
+.import-reviewed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.import-hint {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #f6f4ef;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
 .import-row input.field-error {
   border-color: #b00020;
   background: #fff5f5;

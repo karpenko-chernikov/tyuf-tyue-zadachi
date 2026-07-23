@@ -1498,16 +1498,38 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             status_code=400,
         )
 
+    def _is_reviewed(idx: int) -> bool:
+        raw = form.get(f"reviewed_{idx}")
+        if raw is None:
+            return False
+        return str(raw).strip().lower() in ("1", "on", "true", "yes")
+
+    if not any(_is_reviewed(i) for i in range(row_count)):
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(
+                db,
+                user,
+                error="Нет обработанных строк — отметьте «Обработано» у тех, что уже проверили",
+            ),
+            status_code=400,
+        )
+
     backup_sqlite_db()
 
     created_tasks = 0
     created_comments = 0
     attached_files = 0
     skipped = 0
+    not_reviewed = 0
     draft_to_task: dict[str, int] = {}
     errors: list[str] = []
 
     for i in range(row_count):
+        if not _is_reviewed(i):
+            not_reviewed += 1
+            continue
         kind = (form.get(f"kind_{i}") or "skip").strip()
         if kind == "skip":
             skipped += 1
@@ -1587,6 +1609,8 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         )
 
     for i in range(row_count):
+        if not _is_reviewed(i):
+            continue
         kind = (form.get(f"kind_{i}") or "skip").strip()
         if kind == "skip" or kind not in ("comment", "media"):
             continue
@@ -1642,7 +1666,8 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         f"Создано задач: {created_tasks}",
         f"комментариев: {created_comments}",
         f"файлов: {attached_files}",
-        f"пропущено строк: {skipped}",
+        f"явно пропущено: {skipped}",
+        f"не обработано (оставлено): {not_reviewed}",
     ]
     success = ". ".join(parts) + "."
     if errors:
