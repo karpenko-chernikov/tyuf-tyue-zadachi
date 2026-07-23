@@ -12,8 +12,7 @@
 <section class="card">
   <h2>1. Источник</h2>
   <p class="muted">
-    Экспорт лежит в <code>data/imports/</code> (скопирован с Downloads). JSON был обрезан —
-    берём только полный чат «Идеи для заданий…». Фото и видео из папки чата приложатся к задачам.
+    Локальный экспорт из <code>data/imports/</code> или загрузите <code>result.json</code>.
   </p>
   <form method="post" action="/import" enctype="multipart/form-data" class="import-upload">
     {% if local_exports %}
@@ -67,9 +66,7 @@
     <input type="hidden" name="row_count" value="{{ rows|length }}">
     <input type="hidden" name="export_root" value="{{ export_root or '' }}">
     <p class="import-hint">
-      Тип подставляется автоматически — это черновик. Отметьте <strong>Обработано</strong> у строк,
-      которые уже проверили: в базу уйдут <em>только они</em>. При следующем разборе обработанные
-      сообщения больше не показываются. Если две идеи в одну минуту — вторая сохранится со сдвигом времени.
+      В базу уйдут только строки с галочкой «Обработано».
     </p>
     <div class="import-toolbar">
       <button type="submit" class="btn primary">Сохранить обработанные</button>

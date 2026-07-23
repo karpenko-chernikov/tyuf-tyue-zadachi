@@ -26,7 +26,7 @@
 {% endmacro %}
 
 
-{% macro file_picker(name, hint='Несколько сразу: ⌘/Ctrl+клик или Shift · до 15 МБ каждый') %}
+{% macro file_picker(name, hint='Несколько сразу · до 15 МБ каждый') %}
 <div class="file-drop" data-file-drop>
   <input type="file" name="{{ name }}" id="{{ name }}" multiple class="file-drop-input" accept="image/*,video/*,.mp4,.mov,.webm,.pdf,.doc,.docx,.txt,.zip">
   <label for="{{ name }}" class="file-drop-zone">

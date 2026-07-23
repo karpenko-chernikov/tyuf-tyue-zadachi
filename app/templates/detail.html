@@ -70,15 +70,12 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p class="muted">Пока нет. Добавьте через «Редактировать».</p>
+  <p class="muted">—</p>
   {% endif %}
 </section>
 
 <section class="card" id="comments">
   <h2>Комментарии <span class="count-pill">{{ task.comments|length }}</span></h2>
-  <p class="muted help-box">
-    Можно написать текст, приложить фото/файлы или и то и другое.
-  </p>
 
   {% if task.comments %}
   <div class="comments">
@@ -95,29 +92,27 @@
       {% if c.text %}
       <div class="comment-text">{{ c.text }}</div>
       {% elif c.attachments %}
-      <div class="comment-text muted">Без текста · только вложение</div>
+      <div class="comment-text muted">Только вложение</div>
       {% endif %}
       {{ attachment_list(c.attachments, compact=true) }}
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <p class="muted">Комментариев пока нет.</p>
+  <p class="muted">—</p>
   {% endif %}
 
   <form method="post" action="/tasks/{{ task.id }}/comments" class="comment-form" enctype="multipart/form-data">
     <h3>Новый комментарий</h3>
     <label>Кто пишет
-      <span class="hint">из списка или «Другой…»</span>
       {{ author_field('author', default_comment_author, 'Имя нового автора', true) }}
     </label>
     <label>Текст
-      <span class="hint">необязательно, если есть файлы</span>
       <textarea name="text" rows="4" placeholder="Отзыв, обсуждение…"></textarea>
     </label>
     <div class="field-block">
       <div class="field-label">Файлы</div>
-      {{ file_picker('comment_files', 'Можно без текста · несколько сразу (⌘/Ctrl) · до 15 МБ') }}
+      {{ file_picker('comment_files') }}
     </div>
     <button type="submit" class="btn primary">Добавить комментарий</button>
   </form>
@@ -125,9 +120,6 @@
 
 <section class="card" id="history">
   <h2>История изменений <span class="count-pill">{{ history|length }}</span></h2>
-  <p class="muted help-box">
-    Кто и когда создал задачу, менял поля, добавлял или удалял комментарии. Для правок видно «было» и «стало».
-  </p>
 
   {% if history %}
   <div class="history-list">

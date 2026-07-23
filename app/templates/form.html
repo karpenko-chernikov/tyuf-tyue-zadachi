@@ -16,7 +16,7 @@
 {% if not task %}
 <section class="card paste-box">
   <h2>Быстрая вставка из Telegram</h2>
-  <p class="muted">Вставьте текст сообщения — система распознает номер идеи, название, условие, ссылки и назначение (КК).</p>
+  <p class="muted">Вставьте текст сообщения из Telegram — разберём поля автоматически.</p>
   <form method="post" action="/parse">
     <textarea name="paste" rows="6" placeholder="Идея 12&#10;Металл в огне&#10;Нагрейте разные металлические предметы…">{{ paste or '' }}</textarea>
     <button type="submit" class="btn secondary">Разобрать текст</button>
@@ -32,10 +32,10 @@
           value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}"
           placeholder="8 или 8(2)">
         <span class="hint">
-          В базу пишется число <strong>8</strong>. Можно ввести <strong>8</strong> или <strong>8(2)</strong> — оба варианта сохранятся.
-          На экране само станет «№ 8(2)», если идея № 8 уже есть у другой задачи.
           {% if task and task.idea_number is not none %}
-          Сейчас отображается: <strong>{{ format_idea_label(task) }}</strong>.
+          Сейчас: {{ format_idea_label(task) }}
+          {% else %}
+          Например 8 или 8(2)
           {% endif %}
         </span>
       </label>
@@ -43,7 +43,7 @@
         <input type="datetime-local" name="telegram_datetime" required
           value="{% if f.telegram_datetime %}{{ f.telegram_datetime }}{% elif task %}{{ task.telegram_datetime.strftime('%Y-%m-%dT%H:%M') }}{% elif default_telegram_datetime %}{{ default_telegram_datetime }}{% endif %}">
         {% if not task and not f.telegram_datetime and default_telegram_datetime %}
-        <span class="hint">Подставлено из последней задачи — обязательно поменяйте, иначе не сохранится</span>
+        <span class="hint">Из последней задачи — поменяйте, если нужно</span>
         {% endif %}
       </label>
     </div>
@@ -55,7 +55,7 @@
     </label>
 
     <label>Условие *
-      <span class="hint">для КК варианты ответа тоже пишите сюда</span>
+      <span class="hint">Для КК — варианты ответа тоже сюда</span>
       <textarea name="condition" rows="8" required>{% if f.condition is defined %}{{ f.condition }}{% elif task %}{{ task.condition or '' }}{% else %}{{ p.condition or '' }}{% endif %}</textarea>
     </label>
 
@@ -67,7 +67,6 @@
 
     <div class="grid-3">
       <label>Автор задачи *
-        <span class="hint">из списка или «Другой…»</span>
         {% set author_val = f.author if f.author is defined else (task.author if task else default_task_author) %}
         {{ author_field('author', author_val or '', 'Имя нового автора', true) }}
       </label>
@@ -101,7 +100,7 @@
     </label>
 
     <label>Ссылки и источники
-      <span class="hint">статьи, YouTube, Instagram — по одной ссылке на строку</span>
+      <span class="hint">По одной ссылке на строку</span>
       <textarea name="sources" rows="3" placeholder="https://...">{% if f.sources is defined %}{{ f.sources }}{% elif task %}{{ task.sources or '' }}{% else %}{{ p.sources or '' }}{% endif %}</textarea>
     </label>
 
@@ -162,22 +161,19 @@
     {% if not task %}
     <div class="comments-create">
       <h3>Комментарии</h3>
-      <p class="muted">Можно сразу сохранить отзывы — у каждого свой автор и файлы. Необязательно.</p>
       <div id="comment-rows">
         {% set draft_comments = f.comments if f.comments else [{'author': default_comment_author, 'text': ''}] %}
         {% for c in draft_comments %}
         <div class="comment-row">
           <label>Автор комментария
-            <span class="hint">из списка или «Другой…»</span>
             {{ author_field('comment_authors', c.author or '', 'Имя нового автора', false) }}
           </label>
           <label>Текст
-            <span class="hint">необязательно, если есть файлы</span>
             <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…">{{ c.text }}</textarea>
           </label>
           <div class="field-block">
             <div class="field-label">Файлы</div>
-            {{ file_picker('comment_files_' ~ loop.index0, 'Можно без текста · несколько сразу · до 15 МБ') }}
+            {{ file_picker('comment_files_' ~ loop.index0) }}
           </div>
         </div>
         {% endfor %}
@@ -269,7 +265,6 @@ if (addBtn) {
     row.className = 'comment-row';
     row.innerHTML = `
       <label>Автор комментария
-        <span class="hint">из списка или «Другой…»</span>
         <div class="author-field" data-author-field>
           <select class="author-select" data-author-select data-author-name="comment_authors" name="comment_authors">
             <option value="">—</option>
@@ -281,13 +276,12 @@ if (addBtn) {
         </div>
       </label>
       <label>Текст
-        <span class="hint">необязательно, если есть файлы</span>
         <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…"></textarea>
       </label>
       <div class="field-block">
         <div class="field-label">Файлы</div>
         <div class="file-drop" data-file-drop>
-          <input type="file" name="comment_files_${idx}" id="comment_files_${idx}" multiple class="file-drop-input" accept="image/*,.pdf,.doc,.docx,.txt,.zip">
+          <input type="file" name="comment_files_${idx}" id="comment_files_${idx}" multiple class="file-drop-input" accept="image/*,video/*,.mp4,.mov,.webm,.pdf,.doc,.docx,.txt,.zip">
           <label for="comment_files_${idx}" class="file-drop-zone">
             <span class="file-drop-icon" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -298,7 +292,7 @@ if (addBtn) {
             </span>
             <span class="file-drop-copy">
               <span class="file-drop-title">Выбрать файлы</span>
-              <span class="file-drop-hint">Можно без текста · несколько сразу · до 15 МБ</span>
+              <span class="file-drop-hint">Несколько сразу · до 15 МБ каждый</span>
               <span class="file-drop-chosen" data-file-chosen>Файлы не выбраны</span>
             </span>
           </label>
