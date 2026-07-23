@@ -46,7 +46,6 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
             f"Дата в Telegram: {_dt(task.telegram_datetime)}",
             f"Автор: {task.author or '—'}",
             f"Проверена своими руками: {PROVERENA_LABELS.get(task.proverena or '', '—')}",
-            f"Есть видео: {'Да' if task.has_video else 'Нет'}",
             f"Архив: {'Да — больше не предлагаем' if task.archived else 'Нет'}",
         ]
 

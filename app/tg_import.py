@@ -48,7 +48,6 @@ class ImportRow:
     condition: str | None = None
     naznachenie: str = DEFAULT_NAZNACHENIE
     sources: str | None = None
-    has_video: bool = False
     video_url: str | None = None
     # комментарий / media → draft_N или task:ID
     link_to: str | None = None
@@ -145,8 +144,8 @@ def _sources_blob(urls: list[str]) -> str | None:
     return "\n".join(urls) if urls else None
 
 
-def _video_from_urls(urls: list[str]) -> tuple[bool, str | None]:
-    video = next(
+def _video_from_urls(urls: list[str]) -> str | None:
+    return next(
         (
             u
             for u in urls
@@ -154,7 +153,6 @@ def _video_from_urls(urls: list[str]) -> tuple[bool, str | None]:
         ),
         None,
     )
-    return bool(video), video
 
 
 def _text_without_urls(text: str, urls: list[str]) -> str:
@@ -416,11 +414,14 @@ def classify_messages(
     messages: list[dict],
     *,
     existing_by_minute: dict[str, tuple[int, str]] | None = None,
+    processed_msg_ids: set[int] | None = None,
 ) -> list[ImportRow]:
     """
     existing_by_minute: 'YYYY-MM-DDTHH:MM' -> (task_id, label)
+    processed_msg_ids: уже разобранные msg id — не показываем снова
     """
     existing_by_minute = existing_by_minute or {}
+    processed_msg_ids = processed_msg_ids or set()
 
     idea_msg_ids: set[int] = set()
     provisional: list[dict] = []
@@ -438,6 +439,9 @@ def classify_messages(
         except (TypeError, ValueError):
             msg_id_i = None
 
+        if msg_id_i is not None and msg_id_i in processed_msg_ids:
+            continue
+
         dt = parse_export_datetime(msg)
         dt_local = dt.strftime("%Y-%m-%dT%H:%M") if dt else ""
         author = _sender_name(msg)
@@ -450,6 +454,10 @@ def classify_messages(
             reply_to = None
 
         is_idea = _looks_like_new_idea(text)
+        # идея уже в базе по дате Telegram — не показываем снова
+        if is_idea and dt_local and dt_local in existing_by_minute:
+            continue
+
         if is_idea and msg_id_i is not None:
             idea_msg_ids.add(msg_id_i)
 
@@ -494,14 +502,8 @@ def classify_messages(
             draft_key = f"draft_{len(idea_drafts)}"
             if media_paths:
                 notes.append(f"Файлов: {len(media_paths)}")
-            # локальное видео в экспорте тоже считаем has_video
-            has_local_video = any(
-                p.lower().endswith((".mp4", ".mov", ".webm", ".mkv")) for p in media_paths
-            )
             sources = _merge_sources(parsed.get("sources"), _sources_blob(urls))
-            has_vid, video_url = _video_from_urls(urls)
-            if not video_url:
-                video_url = parsed.get("video_url")
+            video_url = _video_from_urls(urls) or parsed.get("video_url")
             if sources:
                 notes.append(f"Ссылок: {len(sources.splitlines())}")
             # убрать URL из условия, если они ушли в источники
@@ -518,7 +520,7 @@ def classify_messages(
                 msg_id=item["msg_id"],
                 kind="idea",
                 confidence="high",
-                save=dup_id is None,
+                save=True,
                 text=text,
                 author=author or DEFAULT_TASK_AUTHOR,
                 telegram_datetime=dt_local,
@@ -529,7 +531,6 @@ def classify_messages(
                 condition=condition,
                 naznachenie=parsed.get("naznachenie") or DEFAULT_NAZNACHENIE,
                 sources=sources,
-                has_video=bool(parsed.get("has_video")) or has_vid or has_local_video,
                 video_url=video_url,
                 media_paths=media_paths,
                 duplicate_task_id=dup_id,
@@ -537,11 +538,6 @@ def classify_messages(
                 draft_key=draft_key,
                 notes=notes,
             )
-            if dup_id is not None:
-                row.save = False
-                row.kind = "skip"
-                row.notes.append("Помечено «пропустить» — совпала дата с существующей задачей")
-                row.draft_key = f"task:{dup_id}"
             rows.append(row)
             idea_drafts.append(row)
             last_idea_draft = row
@@ -572,11 +568,9 @@ def classify_messages(
                 target = last_idea_draft
             if target and target.draft_key:
                 target.sources = _merge_sources(target.sources, _sources_blob(urls))
-                has_vid, video_url = _video_from_urls(urls)
-                if has_vid:
-                    target.has_video = True
-                    if not target.video_url:
-                        target.video_url = video_url
+                video_url = _video_from_urls(urls)
+                if video_url and not target.video_url:
+                    target.video_url = video_url
                 kind = "skip"
                 confidence = "high"
                 save = False
@@ -663,8 +657,13 @@ def parse_telegram_export(
     payload: str | bytes | dict,
     *,
     existing_by_minute: dict[str, tuple[int, str]] | None = None,
+    processed_msg_ids: set[int] | None = None,
     chat_name: str | None = None,
 ) -> tuple[list[ImportRow], list[dict]]:
     messages, chats = load_export_messages(payload, chat_name=chat_name)
-    rows = classify_messages(messages, existing_by_minute=existing_by_minute)
+    rows = classify_messages(
+        messages,
+        existing_by_minute=existing_by_minute,
+        processed_msg_ids=processed_msg_ids,
+    )
     return rows, chats

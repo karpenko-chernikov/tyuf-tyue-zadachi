@@ -68,8 +68,8 @@
     <input type="hidden" name="export_root" value="{{ export_root or '' }}">
     <p class="import-hint">
       Тип подставляется автоматически — это черновик. Отметьте <strong>Обработано</strong> у строк,
-      которые уже проверили: в базу уйдут <em>только они</em>. Остальное можно добрать при следующем разборе
-      (уже сохранённые по дате Telegram не создадутся повторно).
+      которые уже проверили: в базу уйдут <em>только они</em>. При следующем разборе обработанные
+      сообщения (и идеи, уже лежащие в базе) больше не показываются.
     </p>
     <div class="import-toolbar">
       <button type="submit" class="btn primary">Сохранить обработанные</button>
@@ -118,6 +118,7 @@
       {% endif %}
 
       <input type="hidden" name="draft_key_{{ i }}" value="{{ r.draft_key or '' }}">
+      <input type="hidden" name="msg_id_{{ i }}" value="{% if r.msg_id is not none %}{{ r.msg_id }}{% endif %}">
       <textarea name="media_paths_{{ i }}" class="hidden" rows="1">{% if r.media_paths %}{{ r.media_paths|join('\n') }}{% endif %}</textarea>
 
       {% if r.media_paths %}

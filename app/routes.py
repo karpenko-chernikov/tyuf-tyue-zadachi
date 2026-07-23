@@ -42,7 +42,7 @@ from app.history import (
     record_update,
     snapshot_task,
 )
-from app.models import Attachment, Comment, Task
+from app.models import Attachment, Comment, ImportProcessedMessage, Task
 from app.tg_import import (
     find_local_export_dirs,
     parse_telegram_export,
@@ -203,11 +203,6 @@ def _available_statuses(naznachenie):
     if naznachenie not in METODKOM_ONLY_FOR:
         statuses.pop(Status.METODKOM.value, None)
     return statuses
-
-
-def _sources_have_video(sources: str, video_url: str) -> bool:
-    blob = f"{sources or ''}\n{video_url or ''}".lower()
-    return any(x in blob for x in ("youtube", "youtu.be", "instagram", "tiktok", "vk.com/video"))
 
 
 def _default_telegram_datetime(db: Session) -> str | None:
@@ -590,7 +585,6 @@ def _build_task_from_form(
     naznachenie: str,
     status: str,
     proverena: str,
-    has_video: bool,
     video_url: str,
     sources: str,
     telegram_datetime: str,
@@ -663,7 +657,6 @@ def _build_task_from_form(
 
     sources_clean = sources.strip() or None
     video_clean = video_url.strip() or None
-    video_flag = has_video or _sources_have_video(sources_clean or "", video_clean or "")
 
     task = db.get(Task, task_id) if task_id else Task()
     task.idea_number = idea_num
@@ -675,7 +668,6 @@ def _build_task_from_form(
     task.naznachenie = naznachenie or None
     task.status = status or Status.TG.value
     task.proverena = proverena or None
-    task.has_video = video_flag
     task.archived = task.status == Status.ARCHIVED.value
     task.video_url = video_clean
     task.sources = sources_clean
@@ -757,7 +749,6 @@ async def create_task(
     naznachenie: str = Form(""),
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
-    has_video: bool = Form(False),
     video_url: str = Form(""),
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
@@ -786,7 +777,6 @@ async def create_task(
             naznachenie,
             status,
             proverena,
-            has_video,
             video_url,
             sources,
             telegram_datetime,
@@ -835,7 +825,6 @@ async def create_task(
             "naznachenie": naznachenie,
             "status": status,
             "proverena": proverena,
-            "has_video": has_video,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,
@@ -946,6 +935,7 @@ def edit_task_page(
 
     cancel_url = f"/kanban/{task.naznachenie}" if task.naznachenie else f"/tasks/{task.id}"
     task_files = [a for a in task.attachments if a.comment_id is None]
+    attach_idea_occurrences(db, [task])
 
     return templates.TemplateResponse(
         request,
@@ -976,7 +966,6 @@ async def update_task(
     naznachenie: str = Form(""),
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
-    has_video: bool = Form(False),
     video_url: str = Form(""),
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
@@ -1007,7 +996,6 @@ async def update_task(
             naznachenie,
             status,
             proverena,
-            has_video,
             video_url,
             sources,
             telegram_datetime,
@@ -1039,7 +1027,6 @@ async def update_task(
             "naznachenie": naznachenie,
             "status": status,
             "proverena": proverena,
-            "has_video": has_video,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,
@@ -1083,7 +1070,6 @@ async def update_task(
             "naznachenie": naznachenie,
             "status": status,
             "proverena": proverena,
-            "has_video": has_video,
             "video_url": video_url,
             "sources": sources,
             "telegram_datetime": telegram_datetime,
@@ -1259,6 +1245,22 @@ def _existing_tasks_by_minute(db: Session) -> dict[str, tuple[int, str]]:
         key = _telegram_dt_minute(task.telegram_datetime).strftime("%Y-%m-%dT%H:%M")
         out[key] = (task.id, format_idea_label(task))
     return out
+
+
+def _processed_import_msg_ids(db: Session) -> set[int]:
+    rows = db.query(ImportProcessedMessage.msg_id).all()
+    return {int(r[0]) for r in rows if r[0] is not None}
+
+
+def _mark_import_msg_processed(db: Session, msg_id: int | None, kind: str) -> None:
+    if msg_id is None:
+        return
+    existing = db.get(ImportProcessedMessage, msg_id)
+    if existing:
+        existing.kind = kind
+        existing.processed_at = datetime.utcnow()
+    else:
+        db.add(ImportProcessedMessage(msg_id=msg_id, kind=kind))
 
 
 def _import_existing_link_options(db: Session) -> list[dict]:
@@ -1443,6 +1445,7 @@ async def import_parse(
         rows, chats = parse_telegram_export(
             payload,
             existing_by_minute=_existing_tasks_by_minute(db),
+            processed_msg_ids=_processed_import_msg_ids(db),
             chat_name=chosen_chat,
         )
         chats_meta = [
@@ -1454,7 +1457,9 @@ async def import_parse(
 
             chosen_chat = pick_chat(chats).get("name")
         if not rows:
-            raise ValueError("В выбранном чате не найдено сообщений для импорта")
+            raise ValueError(
+                "Новых сообщений нет — всё уже в базе или отмечено обработанным при прошлых импортах"
+            )
     except Exception as e:
         error = str(e)
 
@@ -1531,8 +1536,15 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             not_reviewed += 1
             continue
         kind = (form.get(f"kind_{i}") or "skip").strip()
+        msg_raw = (form.get(f"msg_id_{i}") or "").strip()
+        try:
+            msg_id = int(msg_raw) if msg_raw else None
+        except ValueError:
+            msg_id = None
+
         if kind == "skip":
             skipped += 1
+            _mark_import_msg_processed(db, msg_id, "skip")
             continue
         if kind != "idea":
             continue
@@ -1547,7 +1559,11 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         sources = (form.get(f"sources_{i}") or "").strip() or None
         naznachenie = (form.get(f"naznachenie_{i}") or "").strip() or DEFAULT_NAZNACHENIE
         idea_number_raw = (form.get(f"idea_number_{i}") or "").strip()
-        idea_number = int(idea_number_raw) if idea_number_raw.isdigit() else None
+        try:
+            idea_number = parse_idea_number_input(idea_number_raw)
+        except ValueError as e:
+            errors.append(f"Строка {i + 1}: {e}")
+            continue
         media_paths = _media_paths_from_form(form, i)
 
         if not title:
@@ -1570,16 +1586,12 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             continue
 
         video_url = None
-        has_video = False
         if sources:
             for u in sources.splitlines():
                 u = u.strip()
                 if any(x in u.lower() for x in ("youtube", "youtu.be", "instagram")):
                     video_url = u
-                    has_video = True
                     break
-        if any(p.lower().endswith((".mp4", ".mov", ".webm", ".mkv")) for p in media_paths):
-            has_video = True
 
         task = Task(
             idea_number=idea_number,
@@ -1588,7 +1600,6 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             author=author,
             naznachenie=naznachenie,
             status=Status.TG.value,
-            has_video=has_video,
             archived=False,
             video_url=video_url,
             sources=sources,
@@ -1599,6 +1610,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         record_created(db, task, user)
         draft_to_task[draft_key] = task.id
         created_tasks += 1
+        _mark_import_msg_processed(db, msg_id, "idea")
         attached_files += _attach_import_media(
             db,
             export_root=export_root,
@@ -1614,6 +1626,11 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         kind = (form.get(f"kind_{i}") or "skip").strip()
         if kind == "skip" or kind not in ("comment", "media"):
             continue
+        msg_raw = (form.get(f"msg_id_{i}") or "").strip()
+        try:
+            msg_id = int(msg_raw) if msg_raw else None
+        except ValueError:
+            msg_id = None
         text = (form.get(f"text_{i}") or "").strip()
         author = normalize_author(
             (form.get(f"author_{i}") or "").strip(),
@@ -1638,6 +1655,8 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             )
             if n == 0:
                 errors.append(f"Строка {i + 1}: медиафайлы не найдены на диске")
+            else:
+                _mark_import_msg_processed(db, msg_id, "media")
             attached_files += n
             continue
 
@@ -1651,6 +1670,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         db.flush()
         record_comment_added(db, task_id, user, author, text)
         created_comments += 1
+        _mark_import_msg_processed(db, msg_id, "comment")
         attached_files += _attach_import_media(
             db,
             export_root=export_root,

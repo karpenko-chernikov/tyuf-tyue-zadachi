@@ -22,7 +22,6 @@ FIELD_LABELS = {
     "naznachenie": "Назначение",
     "status": "Статус",
     "proverena": "Проверена своими руками",
-    "has_video": "Есть видео",
     "archived": "Архив",
     "video_url": "Ссылка на видео",
     "sources": "Ссылки и источники",
@@ -61,8 +60,6 @@ def snapshot_task(task: Task) -> dict:
 def format_value(field: str, value) -> str:
     if value is None or value == "":
         return "—"
-    if field == "has_video":
-        return "Да" if value else "Нет"
     if field == "archived":
         return "Да — больше не предлагаем" if value else "Нет"
     if field == "naznachenie":
@@ -119,8 +116,6 @@ def record_created(db: Session, task: Task, user: str) -> None:
     changes = []
     for field, value in snap.items():
         if value in (None, ""):
-            continue
-        if field == "has_video" and not value:
             continue
         if field == "archived" and not value:
             continue

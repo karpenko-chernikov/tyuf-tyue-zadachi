@@ -28,10 +28,16 @@
   <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}" enctype="multipart/form-data" id="task-form">
     <div class="grid-2">
       <label>Номер идеи
-        <input type="text" name="idea_number" inputmode="numeric" autocomplete="off"
+        <input type="text" name="idea_number" autocomplete="off"
           value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}"
-          placeholder="например 8">
-        <span class="hint">Пишите только число, например <strong>8</strong>. Если восьмерка уже есть — эта задача сама станет № 8(2). Не пишите «8(2)» вручную.</span>
+          placeholder="8 или 8(2)">
+        <span class="hint">
+          В базу пишется число <strong>8</strong>. Можно ввести <strong>8</strong> или <strong>8(2)</strong> — оба варианта сохранятся.
+          На экране само станет «№ 8(2)», если идея № 8 уже есть у другой задачи.
+          {% if task and task.idea_number is not none %}
+          Сейчас отображается: <strong>{{ format_idea_label(task) }}</strong>.
+          {% endif %}
+        </span>
       </label>
       <label>Дата и время в Telegram *
         <input type="datetime-local" name="telegram_datetime" required
@@ -234,17 +240,17 @@ syncFields();
 const taskForm = document.getElementById('task-form');
 if (taskForm) {
   taskForm.addEventListener('submit', (e) => {
+    const ideaInput = taskForm.querySelector('[name="idea_number"]');
+    if (ideaInput && ideaInput.value.trim()) {
+      // 8(2) / № 8 → 8 перед отправкой
+      const m = ideaInput.value.trim().match(/(\d+)/);
+      if (m) ideaInput.value = m[1];
+    }
     // Скрытые required не дают сохранить без понятной ошибки
     if (!taskForm.checkValidity()) {
       e.preventDefault();
       taskForm.reportValidity();
       return;
-    }
-    const ideaInput = taskForm.querySelector('[name="idea_number"]');
-    if (ideaInput && ideaInput.value.trim()) {
-      // на всякий случай убираем «(2)» если ввели вручную
-      const m = ideaInput.value.trim().match(/(\d+)/);
-      if (m) ideaInput.value = m[1];
     }
     taskForm.querySelectorAll('input[type="file"]').forEach((input) => {
       if (!input.files || input.files.length === 0) input.disabled = true;

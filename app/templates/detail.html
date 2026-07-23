@@ -31,7 +31,6 @@
   <div><span class="label">Дата в Telegram</span>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</div>
   <div><span class="label">Автор</span>{{ task.author or '—' }}</div>
   <div><span class="label">Проверена</span>{{ proverena_labels.get(task.proverena or '', '—') }}</div>
-  <div><span class="label">Есть видео</span>{% if task.has_video %}Да{% else %}Нет{% endif %}</div>
   {% set ig = format_igraetsya(task) %}
   {% if ig %}<div class="full"><span class="label">Играется</span>{{ ig }}</div>{% endif %}
 </div>

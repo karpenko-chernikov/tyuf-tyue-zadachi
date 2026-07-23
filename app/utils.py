@@ -19,23 +19,17 @@ def parse_idea_number(text: str):
 
 
 def parse_idea_number_input(value: str | None) -> int | None:
-    """Поле формы: '8', '8(2)', '№ 8' → 8. Суффикс (2) в поле писать не нужно."""
+    """Поле формы: '8', '8(2)', '№ 8' → 8. Суффикс (2) в БД не хранится — только для отображения."""
     raw = (value or "").strip()
     if not raw:
         return None
     if raw.isdigit():
         return int(raw)
-    # 8(2) / № 8 / Идея 8
-    m = re.match(r"^(?:идея\s*)?(?:№|#)?\s*(\d+)\s*(?:\(\d+\))?$", raw, re.IGNORECASE)
-    if m:
-        return int(m.group(1))
+    # 8(2) / № 8 / Идея 8 — берём первое целое
     m = re.search(r"(\d+)", raw)
     if m:
         return int(m.group(1))
-    raise ValueError(
-        "Номер идеи должен быть целым числом (например 8). "
-        "Не пишите 8(2) — суффикс (2) появится сам, если номер 8 уже есть"
-    )
+    raise ValueError("Номер идеи должен содержать число (например 8 или 8(2))")
 
 
 def is_kapitany(text: str) -> bool:
@@ -125,7 +119,6 @@ def parse_paste(text: str) -> dict:
         "condition": condition,
         "naznachenie": naznachenie,
         "sources": "\n".join(urls) if urls else None,
-        "has_video": any("youtube" in u or "instagram" in u or "youtu.be" in u for u in urls),
         "video_url": next(
             (u for u in urls if "youtube" in u or "instagram" in u or "youtu.be" in u), None
         ),

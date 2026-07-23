@@ -19,7 +19,6 @@ class Task(Base):
     naznachenie = Column(String(50), nullable=True)
     status = Column(String(50), default="tg", index=True)
     proverena = Column(String(20), nullable=True)
-    has_video = Column(Boolean, default=False)
     archived = Column(Boolean, default=False, nullable=False)
     video_url = Column(String(1000), nullable=True)
     tags = Column(String(500), nullable=True)
@@ -103,6 +102,16 @@ class Attachment(Base):
 
     task = relationship("Task", back_populates="attachments")
     comment = relationship("Comment", back_populates="attachments")
+
+
+class ImportProcessedMessage(Base):
+    """Сообщения Telegram, уже разобранные при импорте — больше не показываем."""
+
+    __tablename__ = "import_processed_messages"
+
+    msg_id = Column(Integer, primary_key=True)
+    kind = Column(String(20), nullable=True)
+    processed_at = Column(DateTime, default=datetime.utcnow)
 
 
 class TaskHistory(Base):
