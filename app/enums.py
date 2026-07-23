@@ -140,7 +140,7 @@ AUTHOR_ALIASES = {
 def normalize_author(name: str | None, *, default: str | None = None) -> str:
     raw = (name or "").strip()
     if not raw:
-        return default or DEFAULT_TASK_AUTHOR
+        return DEFAULT_TASK_AUTHOR if default is None else default
     key = raw.lower().replace("ё", "е")
     if key in AUTHOR_ALIASES:
         return AUTHOR_ALIASES[key]

@@ -25,7 +25,7 @@
 {% endif %}
 
 <section class="card">
-  <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}" enctype="multipart/form-data">
+  <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}" enctype="multipart/form-data" id="task-form">
     <div class="grid-2">
       <label>Номер идеи
         <input type="text" name="idea_number" inputmode="numeric" autocomplete="off"
@@ -230,6 +230,27 @@ function syncFields() {
 nazn.addEventListener('change', syncFields);
 status.addEventListener('change', syncFields);
 syncFields();
+
+const taskForm = document.getElementById('task-form');
+if (taskForm) {
+  taskForm.addEventListener('submit', (e) => {
+    // Скрытые required не дают сохранить без понятной ошибки
+    if (!taskForm.checkValidity()) {
+      e.preventDefault();
+      taskForm.reportValidity();
+      return;
+    }
+    const ideaInput = taskForm.querySelector('[name="idea_number"]');
+    if (ideaInput && ideaInput.value.trim()) {
+      // на всякий случай убираем «(2)» если ввели вручную
+      const m = ideaInput.value.trim().match(/(\d+)/);
+      if (m) ideaInput.value = m[1];
+    }
+    taskForm.querySelectorAll('input[type="file"]').forEach((input) => {
+      if (!input.files || input.files.length === 0) input.disabled = true;
+    });
+  });
+}
 
 const addBtn = document.getElementById('add-comment-row');
 if (addBtn) {

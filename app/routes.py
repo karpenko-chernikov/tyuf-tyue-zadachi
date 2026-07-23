@@ -633,9 +633,10 @@ def _build_task_from_form(
 
     if not condition.strip():
         raise ValueError("Заполните условие задачи")
-    author = normalize_author(author, default="")
-    if not author.strip():
+    author_raw = (author or "").strip()
+    if not author_raw:
         raise ValueError("Укажите автора задачи")
+    author = normalize_author(author_raw)
     if not naznachenie.strip():
         raise ValueError("Выберите назначение")
 

@@ -112,6 +112,7 @@
       if (!custom.value) custom.focus();
     } else {
       custom.removeAttribute('name');
+      custom.value = '';
       custom.required = false;
       select.setAttribute('name', name);
     }
