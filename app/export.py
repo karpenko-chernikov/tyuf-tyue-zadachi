@@ -2,7 +2,7 @@ import io
 import csv
 from datetime import datetime
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.enums import (
     NAZNACHENIE_LABELS,
@@ -26,8 +26,8 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
         tasks = (
             db.query(Task)
             .options(
-                joinedload(Task.comments).joinedload(Comment.attachments),
-                joinedload(Task.attachments),
+                selectinload(Task.comments).selectinload(Comment.attachments),
+                selectinload(Task.attachments),
             )
             .order_by(Task.idea_number.asc().nullslast(), Task.id.asc())
             .all()
@@ -105,8 +105,8 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
         tasks = (
             db.query(Task)
             .options(
-                joinedload(Task.comments).joinedload(Comment.attachments),
-                joinedload(Task.attachments),
+                selectinload(Task.comments).selectinload(Comment.attachments),
+                selectinload(Task.attachments),
             )
             .order_by(Task.idea_number.asc().nullslast(), Task.id.asc())
             .all()

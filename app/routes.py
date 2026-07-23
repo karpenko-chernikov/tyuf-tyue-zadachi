@@ -6,9 +6,9 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.auth import change_password, login_required
 from app.database import backup_sqlite_db, get_db
@@ -893,9 +893,9 @@ def task_detail(
         return RedirectResponse("/login", status_code=303)
 
     task = db.query(Task).options(
-        joinedload(Task.comments).joinedload(Comment.attachments),
-        joinedload(Task.attachments),
-        joinedload(Task.history),
+        selectinload(Task.comments).selectinload(Comment.attachments),
+        selectinload(Task.attachments),
+        selectinload(Task.history),
     ).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
@@ -944,7 +944,7 @@ def edit_task_page(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    task = db.query(Task).options(joinedload(Task.attachments)).filter(Task.id == task_id).first()
+    task = db.query(Task).options(selectinload(Task.attachments)).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
@@ -1217,8 +1217,7 @@ def download_file(
     inline = as_image or as_video
     disposition = "inline" if inline else "attachment"
     media = attachment_media_type(att)
-    data = bytes(att.data)
-    size = len(data)
+    size = int(att.size or 0)
 
     headers = {
         "Content-Disposition": f"{disposition}; filename*=UTF-8''{quoted}",
@@ -1226,18 +1225,28 @@ def download_file(
         "Accept-Ranges": "bytes",
     }
 
-    # HTML5 <video> часто запрашивает Range — без этого перемотка не работает
+    # HTML5 <video> часто запрашивает Range — читаем только нужный кусок из SQLite
     range_header = request.headers.get("range") if as_video else None
-    if range_header and range_header.startswith("bytes="):
+    if range_header and range_header.startswith("bytes=") and size > 0:
         try:
-            unit, _, rng = range_header.partition("=")
+            _, _, rng = range_header.partition("=")
             start_s, _, end_s = rng.partition("-")
             start = int(start_s) if start_s else 0
             end = int(end_s) if end_s else size - 1
             end = min(end, size - 1)
             if start < 0 or start > end or start >= size:
                 raise ValueError("bad range")
-            chunk = data[start : end + 1]
+            length = end - start + 1
+            # SQLite substr для BLOB — 1-based
+            chunk = db.execute(
+                text(
+                    "SELECT substr(data, :start, :length) FROM attachments WHERE id = :id"
+                ),
+                {"start": start + 1, "length": length, "id": attachment_id},
+            ).scalar()
+            if chunk is None:
+                raise HTTPException(status_code=404, detail="Файл не найден")
+            chunk = bytes(chunk)
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
             headers["Content-Length"] = str(len(chunk))
             return Response(
@@ -1250,7 +1259,8 @@ def download_file(
             headers["Content-Range"] = f"bytes */{size}"
             return Response(status_code=416, headers=headers)
 
-    headers["Content-Length"] = str(size)
+    data = bytes(att.data)
+    headers["Content-Length"] = str(len(data))
     return Response(
         content=data,
         media_type=media,
@@ -1818,8 +1828,8 @@ def export_txt(
 
     author_filter = (author or "").strip() or None
     tasks = _filter_tasks(db, q, naznachenie, status, author_filter).options(
-        joinedload(Task.comments).joinedload(Comment.attachments),
-        joinedload(Task.attachments),
+        selectinload(Task.comments).selectinload(Comment.attachments),
+        selectinload(Task.attachments),
     ).all()
     attach_idea_occurrences(db, tasks)
     tasks = _sort_tasks_by_idea_display(tasks)
@@ -1847,8 +1857,8 @@ def export_csv(
 
     author_filter = (author or "").strip() or None
     tasks = _filter_tasks(db, q, naznachenie, status, author_filter).options(
-        joinedload(Task.comments).joinedload(Comment.attachments),
-        joinedload(Task.attachments),
+        selectinload(Task.comments).selectinload(Comment.attachments),
+        selectinload(Task.attachments),
     ).all()
     attach_idea_occurrences(db, tasks)
     tasks = _sort_tasks_by_idea_display(tasks)

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import deferred, relationship
 
 from app.database import Base
 
@@ -96,7 +96,8 @@ class Attachment(Base):
     filename = Column(String(500), nullable=False)
     content_type = Column(String(200), nullable=True)
     size = Column(Integer, nullable=False)
-    data = Column(LargeBinary, nullable=False)
+    # Не тянуть BLOB при открытии карточки / экспорте — только при /files/{id}
+    data = deferred(Column(LargeBinary, nullable=False))
     uploaded_by = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
