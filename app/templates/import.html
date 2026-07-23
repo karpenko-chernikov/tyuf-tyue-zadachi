@@ -79,7 +79,11 @@
             <option value="skip" {% if r.kind == 'skip' %}selected{% endif %}>Пропустить</option>
           </select>
         </label>
-        <span class="import-badge">{{ r.confidence }}</span>
+        <span class="import-badge">
+          {% if r.confidence == 'high' %}уверенно
+          {% elif r.confidence == 'medium' %}примерно
+          {% else %}неясно{% endif %}
+        </span>
         {% if r.telegram_datetime %}
         <span class="muted">{{ r.telegram_datetime.replace('T', ' ') }}</span>
         {% endif %}
