@@ -306,28 +306,28 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
-/* Авторы — 18 слотов палитры; слот выбирается по имени (в т.ч. для новых) */
+/* Авторы — 18 явно разных цветов по кругу оттенков */
 .author-pill {
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
-.author-pill.author-c0  { background: #f0b27a; color: #5c2d0a; }
-.author-pill.author-c1  { background: #7eb6de; color: #0f3554; }
-.author-pill.author-c2  { background: #5cbfa8; color: #0a3d34; }
-.author-pill.author-c3  { background: #e8c547; color: #4a3800; }
-.author-pill.author-c4  { background: #b894d4; color: #3a1f55; }
-.author-pill.author-c5  { background: #e07a70; color: #4a1510; }
-.author-pill.author-c6  { background: #8fbc8f; color: #1e3d1e; }
-.author-pill.author-c7  { background: #dea5c4; color: #5a2040; }
-.author-pill.author-c8  { background: #6db3c8; color: #0d3a48; }
-.author-pill.author-c9  { background: #d4a574; color: #4a2e12; }
-.author-pill.author-c10 { background: #9aa8d9; color: #243056; }
-.author-pill.author-c11 { background: #c9b458; color: #3f3510; }
-.author-pill.author-c12 { background: #7dcea0; color: #145a36; }
-.author-pill.author-c13 { background: #e59866; color: #5c2a0c; }
-.author-pill.author-c14 { background: #a9cce3; color: #1a3d55; }
-.author-pill.author-c15 { background: #f5b7b1; color: #6b2220; }
-.author-pill.author-c16 { background: #a3e4d7; color: #145a4c; }
-.author-pill.author-c17 { background: #d7bde2; color: #4a2c5c; }
+.author-pill.author-c0  { background: #f0b27a; color: #5c2d0a; } /* персиковый — Никита */
+.author-pill.author-c1  { background: #5dade2; color: #0a2f4a; } /* голубой */
+.author-pill.author-c2  { background: #2e86c1; color: #ffffff; } /* синий — Голомолзин */
+.author-pill.author-c3  { background: #1abc9c; color: #063d32; } /* бирюза */
+.author-pill.author-c4  { background: #27ae60; color: #ffffff; } /* зелёный */
+.author-pill.author-c5  { background: #7d3c98; color: #ffffff; } /* фиолетовый — Барат */
+.author-pill.author-c6  { background: #f4d03f; color: #4a3b00; } /* жёлтый */
+.author-pill.author-c7  { background: #e67e22; color: #3d1f00; } /* оранжевый */
+.author-pill.author-c8  { background: #148f77; color: #ffffff; } /* тёмная бирюза — Миркин */
+.author-pill.author-c9  { background: #af7ac5; color: #2c0f3d; } /* сирень */
+.author-pill.author-c10 { background: #5499c7; color: #ffffff; } /* стальной */
+.author-pill.author-c11 { background: #c0392b; color: #ffffff; } /* красный — Ilya */
+.author-pill.author-c12 { background: #d4ac0d; color: #3a3000; } /* золото */
+.author-pill.author-c13 { background: #16a085; color: #ffffff; } /* изумруд */
+.author-pill.author-c14 { background: #d35400; color: #ffffff; } /* терракота — Булыкин */
+.author-pill.author-c15 { background: #5d6d7e; color: #ffffff; } /* серо-синий */
+.author-pill.author-c16 { background: #45b39d; color: #0a332c; } /* мята */
+.author-pill.author-c17 { background: #a569bd; color: #ffffff; } /* орхидея */
 
 /* Назначение — спокойные оттенки бренда */
 .board-chip { background: #e8f0ec; color: #3d5c50; }
