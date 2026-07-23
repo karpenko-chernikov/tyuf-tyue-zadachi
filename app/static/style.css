@@ -385,6 +385,27 @@ textarea { resize: vertical; }
   .page-header { flex-direction: column; }
 }
 
+.author-combo {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  margin-top: 6px;
+}
+.author-combo input[type="text"] {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+.author-combo .author-pick {
+  margin-top: 0;
+  width: 2.6rem;
+  flex-shrink: 0;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+  cursor: pointer;
+  font-size: 14px;
+}
+
 .hint { font-weight: 400; color: #8a968f; font-size: 12px; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }

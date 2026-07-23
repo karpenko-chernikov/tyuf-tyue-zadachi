@@ -1,5 +1,32 @@
 {# Переиспользуемые куски UI #}
 
+{% macro author_field(name, value='', placeholder='Имя', required=false, list_id='authors-list', input_id=none) %}
+<div class="author-combo">
+  <input type="text" name="{{ name }}" {% if input_id %}id="{{ input_id }}"{% endif %}
+    list="{{ list_id }}"
+    value="{{ value }}"
+    placeholder="{{ placeholder }}"
+    autocomplete="off"
+    {% if required %}required{% endif %}>
+  <select class="author-pick" aria-label="Выбрать автора из списка" title="Выбрать из существующих">
+    <option value="">▾</option>
+    {% for a in authors %}
+    <option value="{{ a }}" {% if value == a %}selected{% endif %}>{{ a }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endmacro %}
+
+
+{% macro authors_datalist(list_id='authors-list') %}
+<datalist id="{{ list_id }}">
+  {% for a in authors %}
+  <option value="{{ a }}"></option>
+  {% endfor %}
+</datalist>
+{% endmacro %}
+
+
 {% macro file_picker(name, hint='Несколько сразу: ⌘/Ctrl+клик или Shift · до 15 МБ каждый') %}
 <div class="file-drop" data-file-drop>
   <input type="file" name="{{ name }}" id="{{ name }}" multiple class="file-drop-input" accept="image/*,.pdf,.doc,.docx,.txt,.zip">

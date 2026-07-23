@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% from "macros.html" import file_picker, attachment_list %}
+{% from "macros.html" import file_picker, attachment_list, author_field, authors_datalist %}
 {% block title %}{% if task %}Редактирование{% else %}Новая задача{% endif %}{% endblock %}
 {% block content %}
 {% set f = form or {} %}
 {% set p = parsed or {} %}
+{{ authors_datalist('authors-list') }}
 <div class="page-header">
   <h1>{% if task %}Редактирование{% else %}Новая задача{% endif %}</h1>
   <a href="/" class="btn secondary">← К списку</a>
@@ -60,14 +61,9 @@
 
     <div class="grid-3">
       <label>Автор задачи *
-        <input type="text" name="author" list="authors-list" required
-          value="{% if f.author is defined %}{{ f.author }}{% elif task %}{{ task.author or '' }}{% else %}{{ default_task_author }}{% endif %}"
-          placeholder="Кто предложил">
-        <datalist id="authors-list">
-          {% for a in authors %}
-          <option value="{{ a }}"></option>
-          {% endfor %}
-        </datalist>
+        <span class="hint">выберите из списка или впишите нового</span>
+        {% set author_val = f.author if f.author is defined else (task.author if task else default_task_author) %}
+        {{ author_field('author', author_val or '', 'Кто предложил', true, 'authors-list') }}
       </label>
       <label>Назначение *
         {% set nazn_val = f.naznachenie if f.naznachenie is defined else (task.naznachenie if task else (p.naznachenie or default_naznachenie)) %}
@@ -166,7 +162,8 @@
         {% for c in draft_comments %}
         <div class="comment-row">
           <label>Автор комментария
-            <input type="text" name="comment_authors" list="authors-list" value="{{ c.author }}" placeholder="Кто пишет">
+            <span class="hint">из списка или новый</span>
+            {{ author_field('comment_authors', c.author or '', 'Кто пишет', false, 'authors-list') }}
           </label>
           <label>Текст
             <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…">{{ c.text }}</textarea>
@@ -231,13 +228,22 @@ syncFields();
 
 const addBtn = document.getElementById('add-comment-row');
 if (addBtn) {
+  const authorOptions = `{% for a in authors %}<option value="{{ a }}">{{ a }}</option>{% endfor %}`;
   addBtn.addEventListener('click', () => {
     const rows = document.getElementById('comment-rows');
     const row = document.createElement('div');
     row.className = 'comment-row';
     row.innerHTML = `
       <label>Автор комментария
-        <input type="text" name="comment_authors" list="authors-list" value="{{ default_comment_author }}" placeholder="Кто пишет">
+        <span class="hint">из списка или новый</span>
+        <div class="author-combo">
+          <input type="text" name="comment_authors" list="authors-list"
+            value="{{ default_comment_author }}" placeholder="Кто пишет" autocomplete="off">
+          <select class="author-pick" aria-label="Выбрать автора из списка" title="Выбрать из существующих">
+            <option value="">▾</option>
+            ${authorOptions}
+          </select>
+        </div>
       </label>
       <label>Текст
         <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…"></textarea>
