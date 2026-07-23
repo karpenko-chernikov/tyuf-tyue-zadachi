@@ -10,6 +10,8 @@ venv/
 # База задач хранится в git (data/zadachi.db)
 # локальные автобэкапы — не в git
 data/backups/
+# экспорты Telegram (фото/видео) — не в git
+data/imports/
 # временные файлы sqlite
 data/*.db-journal
 data/*.db-wal

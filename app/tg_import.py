@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from app.enums import DEFAULT_COMMENT_AUTHOR, DEFAULT_NAZNACHENIE, DEFAULT_TASK_AUTHOR
@@ -17,6 +18,9 @@ IDEA_MENTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+DEFAULT_IMPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "imports"
+PREFERRED_CHAT_SUBSTRING = "идеи для заданий"
+
 
 @dataclass
 class ImportRow:
@@ -24,7 +28,7 @@ class ImportRow:
 
     index: int
     msg_id: int | None
-    kind: str  # idea | comment | skip
+    kind: str  # idea | comment | media | skip
     confidence: str  # high | medium | low
     save: bool
     text: str
@@ -40,8 +44,10 @@ class ImportRow:
     sources: str | None = None
     has_video: bool = False
     video_url: str | None = None
-    # комментарий → draft_N или task:ID
+    # комментарий / media → draft_N или task:ID
     link_to: str | None = None
+    # относительные пути к файлам внутри папки экспорта
+    media_paths: list[str] = field(default_factory=list)
     # дубликат в БД
     duplicate_task_id: int | None = None
     duplicate_label: str | None = None
@@ -66,6 +72,23 @@ def extract_message_text(raw: Any) -> str:
                 parts.append(str(item.get("text") or ""))
         return "".join(parts)
     return str(raw)
+
+
+def extract_media_paths(msg: dict) -> list[str]:
+    paths: list[str] = []
+    for key in ("photo", "file"):
+        val = msg.get(key)
+        if not isinstance(val, str):
+            continue
+        val = val.strip()
+        if not val:
+            continue
+        low = val.lower()
+        if "not included" in low or "file not included" in low:
+            continue
+        if val not in paths:
+            paths.append(val)
+    return paths
 
 
 def parse_export_datetime(msg: dict) -> datetime | None:
@@ -109,35 +132,162 @@ def _mentioned_idea_numbers(text: str) -> list[int]:
     return [int(m.group(1)) for m in IDEA_MENTION_RE.finditer(text or "")]
 
 
-def load_export_messages(payload: str | bytes | dict) -> list[dict]:
-    """Принимает result.json (объект/строка) или список сообщений."""
+def _extract_complete_objects(raw: str, start_hint: int) -> list[str]:
+    """Вытаскивает полные {...} объекты из возможно обрезанного JSON-массива."""
+    objects: list[str] = []
+    i = start_hint
+    n = len(raw)
+    while i < n:
+        while i < n and raw[i] in " \t\r\n,":
+            i += 1
+        if i >= n or raw[i] != "{":
+            break
+        depth = 0
+        in_str = False
+        esc = False
+        start = i
+        for j in range(i, n):
+            ch = raw[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    objects.append(raw[start : j + 1])
+                    i = j + 1
+                    break
+        else:
+            break
+    return objects
+
+
+def load_json_lenient(payload: str | bytes | dict) -> dict | list:
+    if isinstance(payload, dict) or isinstance(payload, list):
+        return payload
     if isinstance(payload, (bytes, bytearray)):
         payload = payload.decode("utf-8-sig")
-    if isinstance(payload, str):
-        text = payload.strip()
-        if not text:
-            return []
-        data = json.loads(text)
-    else:
-        data = payload
+    text = (payload or "").strip()
+    if not text:
+        raise ValueError("Пустой JSON")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Обрезанный экспорт: собираем только полностью закрытые чаты
+        marker = text.find('"list"')
+        if marker < 0:
+            raise
+        bracket = text.find("[", marker)
+        if bracket < 0:
+            raise
+        chunks = _extract_complete_objects(text, bracket + 1)
+        chats = []
+        for chunk in chunks:
+            try:
+                chats.append(json.loads(chunk))
+            except json.JSONDecodeError:
+                continue
+        if not chats:
+            raise ValueError("JSON обрезан и не удалось вытащить ни одного полного чата")
+        return {"chats": {"list": chats}, "about": "lenient parse of truncated export"}
 
+
+def list_chats(data: dict | list) -> list[dict]:
     if isinstance(data, list):
-        return [m for m in data if isinstance(m, dict)]
-    if isinstance(data, dict):
-        messages = data.get("messages")
-        if isinstance(messages, list):
-            return [m for m in messages if isinstance(m, dict)]
-        # иногда кладут один чат в chats
-        chats = data.get("chats")
-        if isinstance(chats, dict):
-            lst = chats.get("list") or []
-            out: list[dict] = []
-            for chat in lst:
-                if isinstance(chat, dict):
-                    out.extend(m for m in (chat.get("messages") or []) if isinstance(m, dict))
-            if out:
-                return out
-    raise ValueError("Не похоже на экспорт Telegram: нужен result.json с полем messages")
+        return [{"name": "(список сообщений)", "messages": data, "index": 0}]
+    if not isinstance(data, dict):
+        return []
+    if isinstance(data.get("messages"), list):
+        return [{"name": data.get("name") or "(чат)", "messages": data["messages"], "index": 0}]
+    chats = data.get("chats")
+    if isinstance(chats, dict):
+        out = []
+        for i, chat in enumerate(chats.get("list") or []):
+            if isinstance(chat, dict):
+                out.append(
+                    {
+                        "name": chat.get("name") or f"Чат {i + 1}",
+                        "type": chat.get("type"),
+                        "messages": chat.get("messages") or [],
+                        "index": i,
+                    }
+                )
+        return out
+    return []
+
+
+def pick_chat(chats: list[dict], chat_name: str | None = None) -> dict:
+    if not chats:
+        raise ValueError("В экспорте нет чатов")
+    if chat_name:
+        needle = chat_name.strip().lower()
+        for c in chats:
+            if (c.get("name") or "").strip().lower() == needle:
+                return c
+        for c in chats:
+            if needle in (c.get("name") or "").lower():
+                return c
+    for c in chats:
+        if PREFERRED_CHAT_SUBSTRING in (c.get("name") or "").lower():
+            return c
+    # чат с наибольшим числом «Идея N»
+    best = None
+    best_score = -1
+    for c in chats:
+        score = 0
+        for m in c.get("messages") or []:
+            if _looks_like_new_idea(extract_message_text(m.get("text"))):
+                score += 1
+        if score > best_score:
+            best_score = score
+            best = c
+    return best or chats[0]
+
+
+def load_export_messages(
+    payload: str | bytes | dict,
+    *,
+    chat_name: str | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Возвращает (messages выбранного чата, список чатов для UI)."""
+    data = load_json_lenient(payload)
+    chats = list_chats(data)
+    if not chats:
+        raise ValueError("Не похоже на экспорт Telegram: нет messages/chats")
+    chosen = pick_chat(chats, chat_name=chat_name)
+    messages = [m for m in (chosen.get("messages") or []) if isinstance(m, dict)]
+    return messages, chats
+
+
+def find_local_export_dirs() -> list[Path]:
+    if not DEFAULT_IMPORT_DIR.is_dir():
+        return []
+    dirs = []
+    for p in sorted(DEFAULT_IMPORT_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        if not p.is_dir():
+            continue
+        if (p / "result_ideas.json").is_file() or (p / "result.json").is_file():
+            dirs.append(p)
+    return dirs
+
+
+def read_local_export_json(export_dir: Path) -> tuple[str, Path]:
+    """Читает JSON из папки экспорта; предпочитает result_ideas.json."""
+    for name in ("result_ideas.json", "result.json"):
+        path = export_dir / name
+        if path.is_file():
+            return path.read_text(encoding="utf-8-sig"), path
+    raise FileNotFoundError(f"В {export_dir} нет result.json")
 
 
 def classify_messages(
@@ -150,7 +300,6 @@ def classify_messages(
     """
     existing_by_minute = existing_by_minute or {}
 
-    # Сначала собрать идеи по msg_id для reply
     idea_msg_ids: set[int] = set()
     provisional: list[dict] = []
 
@@ -158,8 +307,8 @@ def classify_messages(
         if msg.get("type") and msg.get("type") != "message":
             continue
         text = extract_message_text(msg.get("text")).strip()
-        if not text and not msg.get("forwarded_from"):
-            # пустые / стикеры без текста пропускаем молча
+        media_paths = extract_media_paths(msg)
+        if not text and not msg.get("forwarded_from") and not media_paths:
             continue
         msg_id = msg.get("id")
         try:
@@ -191,17 +340,19 @@ def classify_messages(
                 "forwarded_from": forwarded_s,
                 "reply_to": reply_to,
                 "is_idea": is_idea,
+                "media_paths": media_paths,
             }
         )
 
     rows: list[ImportRow] = []
-    idea_drafts: list[ImportRow] = []  # для привязки комментариев
+    idea_drafts: list[ImportRow] = []
     last_idea_draft: ImportRow | None = None
 
     for i, item in enumerate(provisional):
         text = item["text"]
         author = item["author"] or DEFAULT_TASK_AUTHOR
         dt_local = item["dt_local"]
+        media_paths = item["media_paths"]
         notes: list[str] = []
         dup_id = None
         dup_label = None
@@ -212,6 +363,12 @@ def classify_messages(
         if item["is_idea"]:
             parsed = parse_paste(text)
             draft_key = f"draft_{len(idea_drafts)}"
+            if media_paths:
+                notes.append(f"Файлов: {len(media_paths)}")
+            # локальное видео в экспорте тоже считаем has_video
+            has_local_video = any(
+                p.lower().endswith((".mp4", ".mov", ".webm", ".mkv")) for p in media_paths
+            )
             row = ImportRow(
                 index=i,
                 msg_id=item["msg_id"],
@@ -228,8 +385,9 @@ def classify_messages(
                 condition=parsed.get("condition") or text,
                 naznachenie=parsed.get("naznachenie") or DEFAULT_NAZNACHENIE,
                 sources=parsed.get("sources"),
-                has_video=bool(parsed.get("has_video")),
+                has_video=bool(parsed.get("has_video")) or has_local_video,
                 video_url=parsed.get("video_url"),
+                media_paths=media_paths,
                 duplicate_task_id=dup_id,
                 duplicate_label=dup_label,
                 draft_key=draft_key,
@@ -239,26 +397,33 @@ def classify_messages(
                 row.save = False
                 row.kind = "skip"
                 row.notes.append("Помечено «пропустить» — совпала дата с существующей задачей")
-                # чтобы комментарии могли привязаться к уже существующей задаче
                 row.draft_key = f"task:{dup_id}"
             rows.append(row)
             idea_drafts.append(row)
             last_idea_draft = row
             continue
 
-        # Комментарий?
         mentions = _mentioned_idea_numbers(text)
         reply_to_idea = item["reply_to"] is not None and item["reply_to"] in idea_msg_ids
         is_forward = bool(item["forwarded_from"])
-        is_comment = is_forward or reply_to_idea or bool(mentions)
+        media_only = (not text) and bool(media_paths)
 
         link_to: str | None = None
         confidence = "low"
         kind = "skip"
         save = False
 
-        if reply_to_idea:
-            # найти draft по msg_id
+        if media_only and not is_forward and not reply_to_idea and not mentions:
+            # фото/видео без текста → к предыдущей идее как вложение задачи
+            kind = "media"
+            confidence = "medium"
+            if last_idea_draft and last_idea_draft.draft_key:
+                link_to = last_idea_draft.draft_key
+                save = True
+                notes.append("Медиа без текста → к предыдущей идее")
+            else:
+                notes.append("Медиа без текста, идея выше не найдена")
+        elif reply_to_idea:
             for idea in idea_drafts:
                 if idea.msg_id == item["reply_to"]:
                     link_to = idea.draft_key
@@ -280,13 +445,11 @@ def classify_messages(
         elif is_forward:
             kind = "comment"
             confidence = "medium"
-            # ближайшая предыдущая идея
             if last_idea_draft and last_idea_draft.draft_key:
                 link_to = last_idea_draft.draft_key
                 save = True
                 notes.append("Пересланное → привязка к предыдущей идее")
             else:
-                save = False
                 notes.append("Пересланное, но идея выше не найдена")
         else:
             kind = "skip"
@@ -294,22 +457,22 @@ def classify_messages(
             save = False
             notes.append("Не похоже на идею/комментарий — проверьте вручную")
 
-        if dup_id is not None and kind == "comment":
-            # комментарий с той же минутой, что задача — редкость; не блокируем
-            pass
+        if media_paths:
+            notes.append(f"Файлов: {len(media_paths)}")
 
         row = ImportRow(
             index=i,
             msg_id=item["msg_id"],
             kind=kind,
             confidence=confidence,
-            save=save and not (kind == "idea" and dup_id),
+            save=save,
             text=text,
             author=author or DEFAULT_COMMENT_AUTHOR,
             telegram_datetime=dt_local,
             forwarded_from=item["forwarded_from"],
             reply_to_msg_id=item["reply_to"],
             link_to=link_to,
+            media_paths=media_paths,
             duplicate_task_id=dup_id,
             duplicate_label=dup_label,
             notes=notes,
@@ -323,6 +486,8 @@ def parse_telegram_export(
     payload: str | bytes | dict,
     *,
     existing_by_minute: dict[str, tuple[int, str]] | None = None,
-) -> list[ImportRow]:
-    messages = load_export_messages(payload)
-    return classify_messages(messages, existing_by_minute=existing_by_minute)
+    chat_name: str | None = None,
+) -> tuple[list[ImportRow], list[dict]]:
+    messages, chats = load_export_messages(payload, chat_name=chat_name)
+    rows = classify_messages(messages, existing_by_minute=existing_by_minute)
+    return rows, chats

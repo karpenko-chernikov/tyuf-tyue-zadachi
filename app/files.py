@@ -3,20 +3,43 @@
 from __future__ import annotations
 
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from fastapi import HTTPException, UploadFile
 
 from app.models import Attachment
 
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 МБ
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 МБ (обычная загрузка из браузера)
+MAX_IMPORT_BYTES = 100 * 1024 * 1024  # 100 МБ (файлы из экспорта Telegram)
 MAX_FILES_PER_REQUEST = 10
+MAX_IMPORT_FILES_PER_ROW = 30
 
 
 def safe_filename(name: str) -> str:
     raw = PurePosixPath(name or "file").name.strip() or "file"
     raw = re.sub(r"[^\w.\- ()а-яА-ЯёЁ]+", "_", raw, flags=re.UNICODE)
     return raw[:200] or "file"
+
+
+def guess_content_type(filename: str) -> str | None:
+    name = (filename or "").lower()
+    if name.endswith((".jpg", ".jpeg")):
+        return "image/jpeg"
+    if name.endswith(".png"):
+        return "image/png"
+    if name.endswith(".gif"):
+        return "image/gif"
+    if name.endswith(".webp"):
+        return "image/webp"
+    if name.endswith(".mp4"):
+        return "video/mp4"
+    if name.endswith(".mov"):
+        return "video/quicktime"
+    if name.endswith(".webm"):
+        return "video/webm"
+    if name.endswith(".pdf"):
+        return "application/pdf"
+    return None
 
 
 async def read_upload(upload: UploadFile, *, max_bytes: int = MAX_UPLOAD_BYTES) -> tuple[str, str | None, bytes]:
@@ -31,6 +54,43 @@ async def read_upload(upload: UploadFile, *, max_bytes: int = MAX_UPLOAD_BYTES) 
     if not data:
         raise HTTPException(status_code=400, detail=f"Файл «{filename}» пустой")
     return filename, content_type, data
+
+
+def save_local_files(
+    db,
+    *,
+    task_id: int,
+    comment_id: int | None,
+    paths: list[Path],
+    uploaded_by: str,
+    max_bytes: int = MAX_IMPORT_BYTES,
+) -> list[Attachment]:
+    """Сохраняет файлы с диска (экспорт Telegram) как вложения."""
+    if not paths:
+        return []
+    if len(paths) > MAX_IMPORT_FILES_PER_ROW:
+        paths = paths[:MAX_IMPORT_FILES_PER_ROW]
+    saved: list[Attachment] = []
+    for path in paths:
+        if not path.is_file():
+            continue
+        size = path.stat().st_size
+        if size <= 0 or size > max_bytes:
+            continue
+        filename = safe_filename(path.name)
+        data = path.read_bytes()
+        att = Attachment(
+            task_id=task_id,
+            comment_id=comment_id,
+            filename=filename,
+            content_type=guess_content_type(filename),
+            size=len(data),
+            data=data,
+            uploaded_by=uploaded_by,
+        )
+        db.add(att)
+        saved.append(att)
+    return saved
 
 
 async def save_uploads(

@@ -10,37 +10,56 @@
 {% if success %}<div class="alert success">{{ success }}</div>{% endif %}
 
 <section class="card">
-  <h2>1. Экспорт чата</h2>
+  <h2>1. Источник</h2>
   <p class="muted">
-    Telegram Desktop → меню чата → Export chat history → формат <strong>JSON</strong>.
-    Загрузите <code>result.json</code> или вставьте его содержимое ниже.
+    Экспорт лежит в <code>data/imports/</code> (скопирован с Downloads). JSON был обрезан —
+    берём только полный чат «Идеи для заданий…». Фото и видео из папки чата приложатся к задачам.
   </p>
   <form method="post" action="/import" enctype="multipart/form-data" class="import-upload">
-    <label>Файл result.json
+    {% if local_exports %}
+    <label>Локальный экспорт
+      <select name="local_export">
+        {% for ex in local_exports %}
+        <option value="{{ ex.path }}">{{ ex.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>Чат (если в файле несколько)
+      <input type="text" name="chat_name" value="{{ chat_name or 'Идеи для заданий на ТЮФ и ТЮЕ' }}"
+        placeholder="Идеи для заданий на ТЮФ и ТЮЕ">
+    </label>
+    <label>Или файл result.json
       <input type="file" name="export_file" accept=".json,application/json">
     </label>
     <label>Или JSON текстом
-      <textarea name="paste" rows="8" placeholder='{"messages":[...]}'></textarea>
+      <textarea name="paste" rows="4" placeholder='{"chats":{"list":[...]}}'></textarea>
     </label>
     <button type="submit" class="btn primary">Разобрать</button>
   </form>
+  {% if chats %}
+  <p class="muted">Чаты в файле:
+    {% for c in chats %}{{ c.name }} ({{ c.messages }}){% if not loop.last %}; {% endif %}{% endfor %}
+  </p>
+  {% endif %}
 </section>
 
 {% if rows %}
 <section class="card import-review">
   <h2>2. Проверка перед сохранением</h2>
   <p class="muted">
-    Парсер предлагает тип и привязку. Пересланные сообщения чаще помечаются как комментарии
-    к предыдущей идее — поправьте вручную. «Только по смыслу» обычно остаются в «пропустить».
+    Тип <strong>медиа</strong> — файлы к задаче без комментария.
+    Пересланные → комментарии. Проверьте привязки и снимите лишнее.
   </p>
 
   <form method="post" action="/import/commit" id="import-commit-form">
     <input type="hidden" name="row_count" value="{{ rows|length }}">
+    <input type="hidden" name="export_root" value="{{ export_root or '' }}">
     <div class="import-toolbar">
       <button type="submit" class="btn primary">Сохранить выбранное</button>
       <button type="button" class="btn secondary" id="import-check-ideas">Только идеи</button>
       <button type="button" class="btn secondary" id="import-check-none">Снять всё</button>
-      <span class="muted">Строк: {{ rows|length }}</span>
+      <span class="muted">Строк: {{ rows|length }} · чат: {{ chat_name or '—' }}</span>
     </div>
 
     {% for r in rows %}
@@ -55,6 +74,7 @@
           <select name="kind_{{ i }}" data-kind>
             <option value="idea" {% if r.kind == 'idea' %}selected{% endif %}>Идея</option>
             <option value="comment" {% if r.kind == 'comment' %}selected{% endif %}>Комментарий</option>
+            <option value="media" {% if r.kind == 'media' %}selected{% endif %}>Медиа к задаче</option>
             <option value="skip" {% if r.kind == 'skip' %}selected{% endif %}>Пропустить</option>
           </select>
         </label>
@@ -65,6 +85,9 @@
         {% if r.forwarded_from %}
         <span class="import-fwd">переслано: {{ r.forwarded_from }}</span>
         {% endif %}
+        {% if r.media_paths %}
+        <span class="import-media-count">📎 {{ r.media_paths|length }}</span>
+        {% endif %}
       </div>
 
       {% if r.notes %}
@@ -74,6 +97,7 @@
       {% endif %}
 
       <input type="hidden" name="draft_key_{{ i }}" value="{{ r.draft_key or '' }}">
+      <textarea name="media_paths_{{ i }}" class="hidden" rows="1">{% if r.media_paths %}{{ r.media_paths|join('\n') }}{% endif %}</textarea>
 
       <div class="grid-2">
         <label>Автор
@@ -108,13 +132,14 @@
         </label>
       </div>
 
-      <div data-panel-comment {% if r.kind != 'comment' %}class="hidden"{% endif %}>
+      <div data-panel-comment {% if r.kind not in ('comment', 'media') %}class="hidden"{% endif %}>
         <label>К идее
           <select name="link_to_{{ i }}">
             <option value="">— выберите —</option>
             {% for idea in rows if idea.draft_key %}
             <option value="{{ idea.draft_key }}" {% if r.link_to == idea.draft_key %}selected{% endif %}>
-              Новая: № {% if idea.idea_number is not none %}{{ idea.idea_number }}{% else %}?{% endif %}{% if idea.title %} — {{ idea.title[:50] }}{% endif %}
+              {% if idea.draft_key.startswith('task:') %}Уже в базе{% else %}Новая{% endif %}:
+              № {% if idea.idea_number is not none %}{{ idea.idea_number }}{% else %}?{% endif %}{% if idea.title %} — {{ idea.title[:50] }}{% endif %}
             </option>
             {% endfor %}
             {% for opt in existing_links %}
@@ -129,8 +154,15 @@
 
       <div data-panel-skip {% if r.kind != 'skip' %}class="hidden"{% endif %}>
         <pre class="import-raw">{{ r.text or '(пусто)' }}</pre>
-        <input type="hidden" name="text_{{ i }}" value="" disabled data-skip-text>
       </div>
+
+      {% if r.media_paths %}
+      <ul class="import-files">
+        {% for p in r.media_paths %}
+        <li>{{ p.split('/')[-1] }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </article>
     {% endfor %}
 
@@ -144,14 +176,12 @@
 document.querySelectorAll('[data-import-row]').forEach((row) => {
   const kindSel = row.querySelector('[data-kind]');
   const textArea = row.querySelector('textarea[name^="text_"]');
-  const skipHidden = row.querySelector('[data-skip-text]');
   const sync = () => {
     const kind = kindSel.value;
     row.querySelector('[data-panel-idea]').classList.toggle('hidden', kind !== 'idea');
-    row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment');
+    row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment' && kind !== 'media');
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
-    if (skipHidden) skipHidden.disabled = true;
   };
   kindSel.addEventListener('change', sync);
   sync();

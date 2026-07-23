@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
@@ -28,7 +29,7 @@ from app.enums import (
     TURNIR_LABELS,
 )
 from app.export import export_tasks_csv, export_tasks_txt
-from app.files import format_size, is_image_attachment, save_uploads
+from app.files import format_size, is_image_attachment, save_local_files, save_uploads
 from app.history import (
     action_label,
     parse_changes,
@@ -41,7 +42,11 @@ from app.history import (
     snapshot_task,
 )
 from app.models import Attachment, Comment, Task
-from app.tg_import import parse_telegram_export
+from app.tg_import import (
+    find_local_export_dirs,
+    parse_telegram_export,
+    read_local_export_json,
+)
 from app.utils import (
     attach_idea_occurrences,
     author_pill_class,
@@ -1260,26 +1265,85 @@ def _import_existing_link_options(db: Session) -> list[dict]:
     return options
 
 
+def _import_page_ctx(db: Session, user: str, **extra):
+    local_dirs = find_local_export_dirs()
+    ctx = {
+        "user": user,
+        "rows": None,
+        "error": None,
+        "success": None,
+        "naznachenie_labels": NAZNACHENIE_LABELS,
+        "existing_links": _import_existing_link_options(db),
+        "default_task_author": DEFAULT_TASK_AUTHOR,
+        "default_comment_author": DEFAULT_COMMENT_AUTHOR,
+        "default_naznachenie": DEFAULT_NAZNACHENIE,
+        "local_exports": [{"path": str(p), "name": p.name} for p in local_dirs],
+        "export_root": None,
+        "chat_name": None,
+        "chats": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _resolve_link_to_task_id(link_to: str, draft_to_task: dict[str, int], db: Session) -> int | None:
+    link_to = (link_to or "").strip()
+    if link_to.startswith("task:"):
+        try:
+            task_id = int(link_to.split(":", 1)[1])
+        except ValueError:
+            return None
+        return task_id if db.get(Task, task_id) else None
+    if link_to.startswith("draft_"):
+        return draft_to_task.get(link_to)
+    return None
+
+
+def _media_paths_from_form(form, i: int) -> list[str]:
+    raw = (form.get(f"media_paths_{i}") or "").strip()
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split("\n") if p.strip()]
+
+
+def _attach_import_media(
+    db: Session,
+    *,
+    export_root: Path | None,
+    rel_paths: list[str],
+    task_id: int,
+    comment_id: int | None,
+    user: str,
+) -> int:
+    if not export_root or not rel_paths:
+        return 0
+    paths: list[Path] = []
+    for rel in rel_paths:
+        # пути в JSON вида chats/chat_001/photos/...
+        candidate = (export_root / rel).resolve()
+        try:
+            candidate.relative_to(export_root.resolve())
+        except ValueError:
+            continue
+        paths.append(candidate)
+    saved = save_local_files(
+        db,
+        task_id=task_id,
+        comment_id=comment_id,
+        paths=paths,
+        uploaded_by=user,
+    )
+    for att in saved:
+        record_file_added(db, task_id, user, att.filename, for_comment=comment_id is not None)
+    return len(saved)
+
+
 @router.get("/import", response_class=HTMLResponse)
 def import_page(request: Request, db: Session = Depends(get_db)):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(
-        request,
-        "import.html",
-        {
-            "user": user,
-            "rows": None,
-            "error": None,
-            "success": None,
-            "naznachenie_labels": NAZNACHENIE_LABELS,
-            "existing_links": _import_existing_link_options(db),
-            "default_task_author": DEFAULT_TASK_AUTHOR,
-            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
-            "default_naznachenie": DEFAULT_NAZNACHENIE,
-        },
-    )
+    return templates.TemplateResponse(request, "import.html", _import_page_ctx(db, user))
 
 
 @router.post("/import", response_class=HTMLResponse)
@@ -1287,6 +1351,8 @@ async def import_parse(
     request: Request,
     db: Session = Depends(get_db),
     paste: str = Form(""),
+    local_export: str = Form(""),
+    chat_name: str = Form(""),
 ):
     user = login_required(request)
     if not user:
@@ -1294,6 +1360,9 @@ async def import_parse(
 
     error = None
     rows = None
+    chats_meta = None
+    export_root: str | None = None
+    chosen_chat = (chat_name or "").strip() or None
     try:
         form = await request.form()
         upload = form.get("export_file")
@@ -1301,33 +1370,57 @@ async def import_parse(
         filename = getattr(upload, "filename", None) if upload is not None else None
         if filename and callable(getattr(upload, "read", None)):
             payload = await upload.read()
+
+        local_path = (local_export or "").strip()
+        if not payload and local_path:
+            export_dir = Path(local_path)
+            if not export_dir.is_dir():
+                raise ValueError(f"Папка экспорта не найдена: {local_path}")
+            payload, _json_path = read_local_export_json(export_dir)
+            export_root = str(export_dir.resolve())
+
         if not payload and paste.strip():
             payload = paste.strip()
+
         if not payload:
-            raise ValueError("Загрузите result.json или вставьте JSON экспорта")
-        rows = parse_telegram_export(
+            # авто: последняя папка в data/imports
+            dirs = find_local_export_dirs()
+            if dirs:
+                payload, _ = read_local_export_json(dirs[0])
+                export_root = str(dirs[0].resolve())
+            else:
+                raise ValueError("Загрузите result.json или укажите папку экспорта в data/imports")
+
+        rows, chats = parse_telegram_export(
             payload,
             existing_by_minute=_existing_tasks_by_minute(db),
+            chat_name=chosen_chat,
         )
+        chats_meta = [
+            {"name": c.get("name"), "messages": len(c.get("messages") or [])} for c in chats
+        ]
+        if chosen_chat is None and chats_meta:
+            # зафиксируем фактически выбранный чат
+            from app.tg_import import pick_chat
+
+            chosen_chat = pick_chat(chats).get("name")
         if not rows:
-            raise ValueError("В экспорте не найдено сообщений с текстом")
+            raise ValueError("В выбранном чате не найдено сообщений для импорта")
     except Exception as e:
         error = str(e)
 
     return templates.TemplateResponse(
         request,
         "import.html",
-        {
-            "user": user,
-            "rows": [r.to_dict() for r in rows] if rows else None,
-            "error": error,
-            "success": None,
-            "naznachenie_labels": NAZNACHENIE_LABELS,
-            "existing_links": _import_existing_link_options(db),
-            "default_task_author": DEFAULT_TASK_AUTHOR,
-            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
-            "default_naznachenie": DEFAULT_NAZNACHENIE,
-        },
+        _import_page_ctx(
+            db,
+            user,
+            rows=[r.to_dict() for r in rows] if rows else None,
+            error=error,
+            export_root=export_root,
+            chat_name=chosen_chat,
+            chats=chats_meta,
+        ),
         status_code=400 if error else 200,
     )
 
@@ -1343,21 +1436,16 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         row_count = int(form.get("row_count") or 0)
     except (TypeError, ValueError):
         row_count = 0
+    export_root_raw = (form.get("export_root") or "").strip()
+    export_root = Path(export_root_raw) if export_root_raw else None
+    if export_root and not export_root.is_dir():
+        export_root = None
+
     if row_count <= 0:
         return templates.TemplateResponse(
             request,
             "import.html",
-            {
-                "user": user,
-                "rows": None,
-                "error": "Нечего сохранять — сначала загрузите экспорт",
-                "success": None,
-                "naznachenie_labels": NAZNACHENIE_LABELS,
-                "existing_links": _import_existing_link_options(db),
-                "default_task_author": DEFAULT_TASK_AUTHOR,
-                "default_comment_author": DEFAULT_COMMENT_AUTHOR,
-                "default_naznachenie": DEFAULT_NAZNACHENIE,
-            },
+            _import_page_ctx(db, user, error="Нечего сохранять — сначала загрузите экспорт"),
             status_code=400,
         )
 
@@ -1365,6 +1453,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
 
     created_tasks = 0
     created_comments = 0
+    attached_files = 0
     skipped = 0
     draft_to_task: dict[str, int] = {}
     errors: list[str] = []
@@ -1386,6 +1475,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         naznachenie = (form.get(f"naznachenie_{i}") or "").strip() or DEFAULT_NAZNACHENIE
         idea_number_raw = (form.get(f"idea_number_{i}") or "").strip()
         idea_number = int(idea_number_raw) if idea_number_raw.isdigit() else None
+        media_paths = _media_paths_from_form(form, i)
 
         if not condition:
             errors.append(f"Строка {i + 1}: у идеи нет условия — пропущена")
@@ -1412,6 +1502,8 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
                     video_url = u
                     has_video = True
                     break
+        if any(p.lower().endswith((".mp4", ".mov", ".webm", ".mkv")) for p in media_paths):
+            has_video = True
 
         task = Task(
             idea_number=idea_number,
@@ -1431,40 +1523,69 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         record_created(db, task, user)
         draft_to_task[draft_key] = task.id
         created_tasks += 1
+        attached_files += _attach_import_media(
+            db,
+            export_root=export_root,
+            rel_paths=media_paths,
+            task_id=task.id,
+            comment_id=None,
+            user=user,
+        )
 
     for i in range(row_count):
         kind = (form.get(f"kind_{i}") or "skip").strip()
         save = form.get(f"save_{i}") == "1"
-        if not save or kind != "comment":
+        if not save or kind not in ("comment", "media"):
             continue
         text = (form.get(f"text_{i}") or "").strip()
         author = (form.get(f"author_{i}") or "").strip() or DEFAULT_COMMENT_AUTHOR
         link_to = (form.get(f"link_to_{i}") or "").strip()
-        if not text:
+        media_paths = _media_paths_from_form(form, i)
+        task_id = _resolve_link_to_task_id(link_to, draft_to_task, db)
+        if not task_id:
+            errors.append(f"Строка {i + 1}: нет привязки к идее — пропущена")
+            continue
+
+        if kind == "media":
+            # только файлы к задаче
+            n = _attach_import_media(
+                db,
+                export_root=export_root,
+                rel_paths=media_paths,
+                task_id=task_id,
+                comment_id=None,
+                user=user,
+            )
+            if n == 0:
+                errors.append(f"Строка {i + 1}: медиафайлы не найдены на диске")
+            attached_files += n
+            continue
+
+        if not text and not media_paths:
             errors.append(f"Строка {i + 1}: пустой комментарий — пропущен")
             continue
-        task_id: int | None = None
-        if link_to.startswith("task:"):
-            try:
-                task_id = int(link_to.split(":", 1)[1])
-            except ValueError:
-                task_id = None
-        elif link_to.startswith("draft_"):
-            task_id = draft_to_task.get(link_to)
-        if not task_id or not db.get(Task, task_id):
-            errors.append(f"Строка {i + 1}: комментарий без привязки к идее — пропущен")
-            continue
+        if not text:
+            text = "(файл)"
         comment = Comment(task_id=task_id, text=text, author=author)
         db.add(comment)
         db.flush()
         record_comment_added(db, task_id, user, author, text)
         created_comments += 1
+        attached_files += _attach_import_media(
+            db,
+            export_root=export_root,
+            rel_paths=media_paths,
+            task_id=task_id,
+            comment_id=comment.id,
+            user=user,
+        )
 
     db.commit()
 
     parts = [
         f"Создано задач: {created_tasks}",
         f"комментариев: {created_comments}",
+        f"файлов: {attached_files}",
         f"пропущено строк: {skipped}",
     ]
     success = ". ".join(parts) + "."
@@ -1476,17 +1597,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "import.html",
-        {
-            "user": user,
-            "rows": None,
-            "error": None,
-            "success": success,
-            "naznachenie_labels": NAZNACHENIE_LABELS,
-            "existing_links": _import_existing_link_options(db),
-            "default_task_author": DEFAULT_TASK_AUTHOR,
-            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
-            "default_naznachenie": DEFAULT_NAZNACHENIE,
-        },
+        _import_page_ctx(db, user, success=success),
     )
 
 

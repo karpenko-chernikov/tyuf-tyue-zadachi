@@ -1031,3 +1031,11 @@ textarea { resize: vertical; }
   max-height: 160px;
   overflow: auto;
 }
+.import-row.kind-media { border-left: 4px solid #8a6d3b; }
+.import-media-count { font-size: 13px; color: var(--brand); font-weight: 600; }
+.import-files {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
