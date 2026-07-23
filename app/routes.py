@@ -231,6 +231,27 @@ def _task_with_telegram_datetime(
     return query.first()
 
 
+def _allocate_telegram_datetime(
+    db: Session, tg_dt: datetime, exclude_id: int | None = None
+) -> tuple[datetime, bool]:
+    """
+    Если минута уже занята другой задачей — сдвигаем вперёд по минуте,
+    пока не найдём свободный слот (несколько идей в одну минуту в чате — норма).
+    Возвращает (datetime, был_ли_сдвиг).
+    """
+    candidate = _telegram_dt_minute(tg_dt)
+    shifted = False
+    for _ in range(120):
+        other = _task_with_telegram_datetime(db, candidate, exclude_id=exclude_id)
+        if other is None:
+            return candidate, shifted
+        candidate = candidate + timedelta(minutes=1)
+        shifted = True
+    raise ValueError(
+        "Не удалось подобрать свободную дату Telegram — слишком много задач в соседних минутах"
+    )
+
+
 def _form_context(db: Session, **extra):
     ctx = {
         "authors": _author_suggestions(db),
@@ -1576,14 +1597,16 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         if not tg_dt:
             errors.append(f"Строка {i + 1}: некорректная дата Telegram — пропущена")
             continue
-        tg_dt = _telegram_dt_minute(tg_dt)
-        other = _task_with_telegram_datetime(db, tg_dt)
-        if other:
-            attach_idea_occurrences(db, [other])
-            errors.append(
-                f"Строка {i + 1}: дата {tg_raw} уже занята задачей {format_idea_label(other)} — пропущена"
-            )
+        try:
+            tg_dt, shifted = _allocate_telegram_datetime(db, tg_dt)
+        except ValueError as e:
+            errors.append(f"Строка {i + 1}: {e}")
             continue
+        if shifted:
+            errors.append(
+                f"Строка {i + 1}: дата занята другой задачей — сохранено как "
+                f"{tg_dt.strftime('%Y-%m-%d %H:%M')} (+сдвиг на свободную минуту)"
+            )
 
         video_url = None
         if sources:

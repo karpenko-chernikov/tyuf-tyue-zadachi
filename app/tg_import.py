@@ -454,9 +454,8 @@ def classify_messages(
             reply_to = None
 
         is_idea = _looks_like_new_idea(text)
-        # идея уже в базе по дате Telegram — не показываем снова
-        if is_idea and dt_local and dt_local in existing_by_minute:
-            continue
+        # Не скрываем по дате: в одну минуту бывает несколько идей.
+        # Уже разобранные сообщения отфильтрованы через processed_msg_ids.
 
         if is_idea and msg_id_i is not None:
             idea_msg_ids.add(msg_id_i)
