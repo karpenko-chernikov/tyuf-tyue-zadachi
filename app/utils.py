@@ -1,3 +1,4 @@
+import hashlib
 import re
 from datetime import datetime
 
@@ -7,6 +8,9 @@ URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 # Короткая строка после «Идея N» — это название, а не условие
 _TITLE_MAX_LEN = 80
+
+# Заранее заготовленные цвета авторов; новые имена тоже получают слот
+AUTHOR_COLOR_SLOTS = 18
 
 
 def extract_urls(text: str) -> list[str]:
@@ -217,31 +221,15 @@ def attach_idea_occurrences(db, tasks) -> None:
 
 
 def author_pill_class(name: str | None) -> str:
-    """CSS-класс цветного овала для автора (у каждого свой цвет)."""
+    """
+    CSS-слот цвета автора: author-c0 … author-c{N-1}.
+    Одно и то же имя всегда даёт один цвет; новые авторы тоже красятся.
+    """
     key = (name or "").strip().lower().replace("ё", "е")
     if not key:
-        return "other"
-    # Сначала уникальные куски имени, чтобы «Артем Барат» ≠ «Артем Голомолзин»
-    rules = (
-        ("karpenko", "nikita"),
-        ("никита", "nikita"),
-        ("голомолзин", "golomolzin"),
-        ("барат", "barat"),
-        ("миркин", "mirkin"),
-        ("булыкин", "bulykin"),
-        ("bulykin", "bulykin"),
-        ("ilya", "ilya"),
-        ("илья", "ilya"),
-        ("nikita", "nikita"),
-    )
-    for needle, slug in rules:
-        if needle in key:
-            return slug
-    if key in ("артем", "artem"):
-        return "golomolzin"
-    if key.startswith("сергей"):
-        return "bulykin"
-    return "other"
+        return "c0"
+    digest = hashlib.md5(key.encode("utf-8")).hexdigest()
+    return f"c{int(digest, 16) % AUTHOR_COLOR_SLOTS}"
 
 
 def status_pill_class(status: str | None) -> str:
