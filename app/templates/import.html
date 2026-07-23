@@ -55,6 +55,12 @@
       <li>У комментария в «К идее» выберите задачу.</li>
       <li>Можно обработать часть (остальное оставить «Пропустить»), сохранить, потом снова «Разобрать» и продолжить.</li>
     </ul>
+    {% set media_n = rows|selectattr('media_paths')|list|length %}
+    {% if media_n %}
+    <p class="import-media-summary">Сообщений <strong>с фото/видео/файлами</strong>: {{ media_n }}. Ищите блок <strong>«Файлы»</strong> и превью под карточкой.</p>
+    {% else %}
+    <p class="import-media-summary">В этом разборе файлов не видно — убедитесь, что выбран локальный экспорт из <code>data/imports/</code> (не только JSON без папки photos).</p>
+    {% endif %}
   </div>
 
   <form method="post" action="/import/commit" id="import-commit-form">
@@ -91,7 +97,7 @@
         <span class="import-fwd">переслано: {{ r.forwarded_from }}</span>
         {% endif %}
         {% if r.media_paths %}
-        <span class="import-media-count">📎 {{ r.media_paths|length }}</span>
+        <span class="import-media-count">файлов: {{ r.media_paths|length }}</span>
         {% endif %}
       </div>
 
@@ -103,6 +109,31 @@
 
       <input type="hidden" name="draft_key_{{ i }}" value="{{ r.draft_key or '' }}">
       <textarea name="media_paths_{{ i }}" class="hidden" rows="1">{% if r.media_paths %}{{ r.media_paths|join('\n') }}{% endif %}</textarea>
+
+      {% if r.media_paths %}
+      <div class="import-media-block">
+        <div class="field-label">Файлы (приложатся при сохранении)</div>
+        <div class="import-media-grid">
+          {% for p in r.media_paths %}
+          {% set name = p.split('/')[-1] %}
+          {% set low = name.lower() %}
+          {% set is_img = low.endswith('.jpg') or low.endswith('.jpeg') or low.endswith('.png') or low.endswith('.gif') or low.endswith('.webp') %}
+          <div class="import-media-item">
+            {% if export_root and is_img %}
+            <a href="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}" target="_blank" rel="noopener">
+              <img src="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}" alt="{{ name }}" loading="lazy">
+            </a>
+            {% elif low.endswith('.mp4') or low.endswith('.mov') or low.endswith('.webm') %}
+            <div class="import-media-video">видео</div>
+            {% else %}
+            <div class="import-media-file">файл</div>
+            {% endif %}
+            <span class="import-media-name" title="{{ name }}">{{ name }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
 
       <div class="grid-2">
         <label>Автор
@@ -160,14 +191,6 @@
       <div data-panel-skip {% if r.kind != 'skip' %}class="hidden"{% endif %}>
         <pre class="import-raw">{{ r.text or '(пусто)' }}</pre>
       </div>
-
-      {% if r.media_paths %}
-      <ul class="import-files">
-        {% for p in r.media_paths %}
-        <li>{{ p.split('/')[-1] }}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
     </article>
     {% endfor %}
 

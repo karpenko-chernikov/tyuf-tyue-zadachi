@@ -1287,6 +1287,46 @@ def _import_page_ctx(db: Session, user: str, **extra):
     return ctx
 
 
+def _safe_import_file(export_root: Path, rel: str) -> Path | None:
+    rel = (rel or "").strip().lstrip("/")
+    if not rel or ".." in Path(rel).parts:
+        return None
+    root = export_root.resolve()
+    candidate = (root / rel).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+@router.get("/import/media")
+def import_media_preview(
+    request: Request,
+    root: str = Query(...),
+    path: str = Query(...),
+):
+    """Превью файла из локального экспорта Telegram (только data/imports)."""
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    export_root = Path(root)
+    if not export_root.is_dir():
+        raise HTTPException(status_code=404, detail="Нет папки экспорта")
+    # только внутри data/imports
+    imports_root = Path(__file__).resolve().parent.parent / "data" / "imports"
+    try:
+        export_root.resolve().relative_to(imports_root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Недоступный путь")
+    file_path = _safe_import_file(export_root, path)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    from fastapi.responses import FileResponse
+
+    return FileResponse(file_path, filename=file_path.name)
+
+
 def _resolve_link_to_task_id(link_to: str, draft_to_task: dict[str, int], db: Session) -> int | None:
     link_to = (link_to or "").strip()
     if link_to.startswith("task:"):
