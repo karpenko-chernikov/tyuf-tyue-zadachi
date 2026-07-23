@@ -1528,6 +1528,9 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         idea_number = int(idea_number_raw) if idea_number_raw.isdigit() else None
         media_paths = _media_paths_from_form(form, i)
 
+        if not title:
+            errors.append(f"Строка {i + 1}: у идеи нет названия — пропущена")
+            continue
         if not condition:
             errors.append(f"Строка {i + 1}: у идеи нет условия — пропущена")
             continue

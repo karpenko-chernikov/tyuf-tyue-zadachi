@@ -157,8 +157,10 @@
             </select>
           </label>
         </div>
-        <label>Название
-          <input type="text" name="title_{{ i }}" value="{{ r.title or '' }}">
+        <label>Название *
+          <input type="text" name="title_{{ i }}" value="{{ r.title or '' }}"
+            placeholder="Обязательно короткое название" data-title-input
+            {% if r.kind == 'idea' %}required{% endif %}>
         </label>
         <label>Условие
           <textarea name="condition_{{ i }}" rows="4">{{ r.condition or r.text or '' }}</textarea>
@@ -209,6 +211,7 @@
 document.querySelectorAll('[data-import-row]').forEach((row) => {
   const kindSel = row.querySelector('[data-kind]');
   const textArea = row.querySelector('textarea[name^="text_"]');
+  const titleInput = row.querySelector('[data-title-input]');
   const sync = () => {
     const kind = kindSel.value;
     row.classList.remove('kind-idea', 'kind-comment', 'kind-media', 'kind-skip');
@@ -217,9 +220,31 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
     row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment' && kind !== 'media');
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
+    if (titleInput) titleInput.required = kind === 'idea';
   };
   kindSel.addEventListener('change', sync);
   sync();
+});
+
+document.getElementById('import-commit-form')?.addEventListener('submit', (e) => {
+  const missing = [];
+  document.querySelectorAll('[data-import-row]').forEach((row) => {
+    const kind = row.querySelector('[data-kind]')?.value;
+    if (kind !== 'idea') return;
+    const title = row.querySelector('[data-title-input]');
+    if (title && !title.value.trim()) {
+      missing.push(title);
+      title.classList.add('field-error');
+    } else if (title) {
+      title.classList.remove('field-error');
+    }
+  });
+  if (missing.length) {
+    e.preventDefault();
+    missing[0].focus();
+    missing[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alert(`Укажите название у всех идей перед сохранением (пусто: ${missing.length}).`);
+  }
 });
 
 document.getElementById('import-all-skip')?.addEventListener('click', () => {

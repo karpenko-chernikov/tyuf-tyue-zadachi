@@ -1032,6 +1032,10 @@ textarea { resize: vertical; }
   overflow: auto;
 }
 .import-row.kind-media { border-left: 4px solid #8a6d3b; }
+.import-row input.field-error {
+  border-color: #b00020;
+  background: #fff5f5;
+}
 .import-media-count { font-size: 13px; color: var(--brand); font-weight: 700; }
 .import-media-summary { margin: 10px 0 0; }
 .import-media-block {
