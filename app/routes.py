@@ -149,7 +149,7 @@ def _author_suggestions(db: Session):
     return sorted(names, key=lambda x: x.lower())
 
 
-def _filter_tasks(db: Session, q, naznachenie, status):
+def _filter_tasks(db: Session, q, naznachenie, status, author=None):
     query = db.query(Task)
     if q:
         like = f"%{q}%"
@@ -165,7 +165,27 @@ def _filter_tasks(db: Session, q, naznachenie, status):
         query = query.filter(Task.naznachenie == naznachenie)
     if status:
         query = query.filter(Task.status == status)
-    return query.order_by(Task.idea_number.asc().nullslast(), Task.id.desc())
+    if author:
+        query = query.filter(Task.author == author)
+    # Сначала № 15, потом 15(2): по номеру, затем по дате TG / id (как у суффикса)
+    return query.order_by(
+        Task.idea_number.asc().nullslast(),
+        Task.telegram_datetime.asc().nullslast(),
+        Task.id.asc(),
+    )
+
+
+def _sort_tasks_by_idea_display(tasks: list) -> list:
+    """№ 15 раньше № 15(2); без номера — в конце."""
+    return sorted(
+        tasks,
+        key=lambda t: (
+            t.idea_number is None,
+            t.idea_number if t.idea_number is not None else 0,
+            getattr(t, "idea_occurrence", None) or 1,
+            t.id or 0,
+        ),
+    )
 
 
 def _available_statuses(naznachenie):
@@ -334,10 +354,15 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
     tasks = (
         db.query(Task)
         .filter(Task.naznachenie == board)
-        .order_by(Task.idea_number.asc().nullslast(), Task.id.desc())
+        .order_by(
+            Task.idea_number.asc().nullslast(),
+            Task.telegram_datetime.asc().nullslast(),
+            Task.id.asc(),
+        )
         .all()
     )
     attach_idea_occurrences(db, tasks)
+    tasks = _sort_tasks_by_idea_display(tasks)
 
     tasks_by_status = {s.value: [] for s in columns}
     for task in tasks:
@@ -451,6 +476,7 @@ def task_list(
     q: str = Query(None),
     naznachenie: str = Query(None),
     status: str = Query(None),
+    author: str = Query(None),
     sort: str = Query(None),
     order: str = Query(None),
 ):
@@ -458,7 +484,8 @@ def task_list(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    query = _filter_tasks(db, q, naznachenie, status)
+    author_filter = (author or "").strip() or None
+    query = _filter_tasks(db, q, naznachenie, status, author_filter)
     sort_key = (sort or "").strip().lower()
     order_key = (order or "").strip().lower()
     if order_key not in ("asc", "desc"):
@@ -477,6 +504,8 @@ def task_list(
 
     tasks = query.all()
     attach_idea_occurrences(db, tasks)
+    if not sort_key:
+        tasks = _sort_tasks_by_idea_display(tasks)
     return templates.TemplateResponse(
         request,
         "list.html",
@@ -486,6 +515,8 @@ def task_list(
             "q": q or "",
             "naznachenie": naznachenie or "",
             "status_filter": status or "",
+            "author_filter": author_filter or "",
+            "authors": _author_suggestions(db),
             "sort": sort_key,
             "order": active_order,
             "naznachenie_labels": NAZNACHENIE_LABELS,
@@ -1178,15 +1209,19 @@ def export_txt(
     q: str = Query(None),
     naznachenie: str = Query(None),
     status: str = Query(None),
+    author: str = Query(None),
 ):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, q, naznachenie, status).options(
+    author_filter = (author or "").strip() or None
+    tasks = _filter_tasks(db, q, naznachenie, status, author_filter).options(
         joinedload(Task.comments).joinedload(Comment.attachments),
         joinedload(Task.attachments),
     ).all()
+    attach_idea_occurrences(db, tasks)
+    tasks = _sort_tasks_by_idea_display(tasks)
     content = export_tasks_txt(db, tasks)
     filename = f"zadachi_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
     return PlainTextResponse(
@@ -1203,19 +1238,23 @@ def export_csv(
     q: str = Query(None),
     naznachenie: str = Query(None),
     status: str = Query(None),
+    author: str = Query(None),
 ):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    tasks = _filter_tasks(db, q, naznachenie, status).options(
+    author_filter = (author or "").strip() or None
+    tasks = _filter_tasks(db, q, naznachenie, status, author_filter).options(
         joinedload(Task.comments).joinedload(Comment.attachments),
         joinedload(Task.attachments),
     ).all()
+    attach_idea_occurrences(db, tasks)
+    tasks = _sort_tasks_by_idea_display(tasks)
     content = export_tasks_csv(db, tasks)
     filename = f"zadachi_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
     return Response(
         content="\ufeff" + content,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

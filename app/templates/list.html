@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Список задач{% endblock %}
 {% block content %}
-{% set qs_base = 'q=' ~ (q|urlencode) ~ '&naznachenie=' ~ (naznachenie|urlencode) ~ '&status=' ~ (status_filter|urlencode) %}
+{% set qs_base = 'q=' ~ (q|urlencode) ~ '&naznachenie=' ~ (naznachenie|urlencode) ~ '&status=' ~ (status_filter|urlencode) ~ '&author=' ~ (author_filter|urlencode) %}
 {% if sort == 'tg' and order == 'asc' %}
   {% set tg_next_order = 'desc' %}
   {% set tg_arrow = '↑' %}
@@ -29,6 +29,12 @@
     <option value="">Все статусы</option>
     {% for val, label in status_labels.items() %}
     <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="author">
+    <option value="">Все авторы</option>
+    {% for a in authors %}
+    <option value="{{ a }}" {% if author_filter == a %}selected{% endif %}>{{ a }}</option>
     {% endfor %}
   </select>
   {% if sort %}
