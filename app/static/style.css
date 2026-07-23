@@ -310,24 +310,25 @@ a:hover { text-decoration: underline; }
 .author-pill {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
-.author-pill.author-c0  { background: #f0b27a; color: #5c2d0a; } /* персиковый — Никита */
-.author-pill.author-c1  { background: #5dade2; color: #0a2f4a; } /* голубой */
-.author-pill.author-c2  { background: #2e86c1; color: #ffffff; } /* синий — Голомолзин */
-.author-pill.author-c3  { background: #1abc9c; color: #063d32; } /* бирюза */
-.author-pill.author-c4  { background: #27ae60; color: #ffffff; } /* зелёный */
-.author-pill.author-c5  { background: #7d3c98; color: #ffffff; } /* фиолетовый — Барат */
-.author-pill.author-c6  { background: #f4d03f; color: #4a3b00; } /* жёлтый */
-.author-pill.author-c7  { background: #e67e22; color: #3d1f00; } /* оранжевый */
-.author-pill.author-c8  { background: #148f77; color: #ffffff; } /* тёмная бирюза — Миркин */
-.author-pill.author-c9  { background: #af7ac5; color: #2c0f3d; } /* сирень */
-.author-pill.author-c10 { background: #5499c7; color: #ffffff; } /* стальной */
-.author-pill.author-c11 { background: #c0392b; color: #ffffff; } /* красный — Ilya */
-.author-pill.author-c12 { background: #d4ac0d; color: #3a3000; } /* золото */
-.author-pill.author-c13 { background: #16a085; color: #ffffff; } /* изумруд */
-.author-pill.author-c14 { background: #d35400; color: #ffffff; } /* терракота — Булыкин */
-.author-pill.author-c15 { background: #5d6d7e; color: #ffffff; } /* серо-синий */
-.author-pill.author-c16 { background: #45b39d; color: #0a332c; } /* мята */
-.author-pill.author-c17 { background: #a569bd; color: #ffffff; } /* орхидея */
+/* Палитра авторов: соседние слоты — далёкие оттенки (не «ещё один тёплый») */
+.author-pill.author-c0  { background: #f0b27a; color: #5c2d0a; } /* персик — Никита */
+.author-pill.author-c1  { background: #1a5276; color: #ffffff; } /* тёмно-синий */
+.author-pill.author-c2  { background: #f4d03f; color: #4a3b00; } /* жёлтый */
+.author-pill.author-c3  { background: #1f618d; color: #ffffff; } /* синий — Голомолзин */
+.author-pill.author-c4  { background: #af7ac5; color: #2c0f3d; } /* сирень */
+.author-pill.author-c5  { background: #196f3d; color: #ffffff; } /* тёмно-зелёный */
+.author-pill.author-c6  { background: #5dade2; color: #0a2f4a; } /* голубой */
+.author-pill.author-c7  { background: #0e6655; color: #ffffff; } /* бирюза — Барат (далеко от персика) */
+.author-pill.author-c8  { background: #922b21; color: #ffffff; } /* бордо */
+.author-pill.author-c9  { background: #5d6d7e; color: #ffffff; } /* серо-синий */
+.author-pill.author-c10 { background: #d4ac0d; color: #3a3000; } /* золото */
+.author-pill.author-c11 { background: #6c3483; color: #ffffff; } /* фиолетовый — Миркин */
+.author-pill.author-c12 { background: #148f77; color: #ffffff; } /* изумруд */
+.author-pill.author-c13 { background: #2874a6; color: #ffffff; } /* стальной синий */
+.author-pill.author-c14 { background: #c0392b; color: #ffffff; } /* красный — Ilya */
+.author-pill.author-c15 { background: #1abc9c; color: #063d32; } /* мята */
+.author-pill.author-c16 { background: #7d3c98; color: #ffffff; } /* орхидея */
+.author-pill.author-c17 { background: #2c3e50; color: #ffffff; } /* графит — Булыкин */
 
 /* Назначение — спокойные оттенки бренда */
 .board-chip { background: #e8f0ec; color: #3d5c50; }

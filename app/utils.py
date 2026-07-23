@@ -12,19 +12,24 @@ _TITLE_MAX_LEN = 80
 # Заранее заготовленные цвета авторов; новые имена тоже получают слот
 AUTHOR_COLOR_SLOTS = 18
 
-# Известные авторы — фиксированные далёкие слоты (c0 = персиковый Никиты)
+# Известные авторы — фиксированные далёкие слоты (c0 = персиковый Никиты).
+# Слоты разведены по кругу оттенков, чтобы пилюли не сливались.
 AUTHOR_COLOR_FIXED = {
     "nikita karpenko-chernikov": 0,
     "никита": 0,
-    "артем голомолзин": 2,
-    "артём голомолзин": 2,
-    "артем барат": 5,
-    "артём барат": 5,
-    "александр миркин": 8,
-    "ilya": 11,
-    "илья": 11,
-    "сергей булыкин": 14,
-    "sergey bulykin": 14,
+    "nikita": 0,
+    "артем голомолзин": 3,
+    "голомолзин": 3,
+    "артем барат": 7,
+    "барат": 7,
+    "александр миркин": 11,
+    "миркин": 11,
+    "ilya": 14,
+    "илья": 14,
+    "сергей булыкин": 17,
+    "sergey bulykin": 17,
+    "булыкин": 17,
+    "bulykin": 17,
 }
 
 
@@ -238,18 +243,26 @@ def attach_idea_occurrences(db, tasks) -> None:
 def author_pill_class(name: str | None) -> str:
     """
     CSS-слот цвета автора: author-c0 … author-c{N-1}.
-    Одно и то же имя всегда даёт один цвет; новые авторы тоже красятся.
-    Слот c0 (персиковый) закреплён за Никитой.
+    Известные авторы — на заранее разведённых цветах; новые — в свободные слоты.
     """
     key = (name or "").strip().lower().replace("ё", "е")
     if not key:
         return "c1"
-    if "karpenko" in key or "никита" in key or key.startswith("nikita"):
-        return "c0"
+
+    if key in AUTHOR_COLOR_FIXED:
+        return f"c{AUTHOR_COLOR_FIXED[key]}"
+
+    # Длинные ключи первыми: «артем барат» важнее, чем «барат»
+    for needle, slot in sorted(AUTHOR_COLOR_FIXED.items(), key=lambda kv: -len(kv[0])):
+        if len(needle) >= 4 and needle in key:
+            return f"c{slot}"
+
+    reserved = set(AUTHOR_COLOR_FIXED.values())
+    free = [i for i in range(AUTHOR_COLOR_SLOTS) if i not in reserved]
+    if not free:
+        free = list(range(AUTHOR_COLOR_SLOTS))
     digest = hashlib.md5(key.encode("utf-8")).hexdigest()
-    # остальные — любой слот кроме зарезервированного c0
-    idx = 1 + (int(digest, 16) % (AUTHOR_COLOR_SLOTS - 1))
-    return f"c{idx}"
+    return f"c{free[int(digest, 16) % len(free)]}"
 
 
 def status_pill_class(status: str | None) -> str:
