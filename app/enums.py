@@ -113,6 +113,8 @@ BOARD_STATUSES = {
 AUTHORS = [
     "Nikita Karpenko-Chernikov",
     "Артем Голомолзин",
+    "Артем Барат",
+    "Александр Миркин",
     "Ilya",
     "Сергей Булыкин",
 ]
