@@ -69,7 +69,9 @@ def _uploads_from_form_list(raw) -> list[UploadFile]:
         return uploads
     items = raw if isinstance(raw, list) else [raw]
     for item in items:
-        if isinstance(item, UploadFile) and item.filename:
+        # Не isinstance(UploadFile): в multipart приходит starlette UploadFile
+        filename = getattr(item, "filename", None)
+        if filename and callable(getattr(item, "read", None)):
             uploads.append(item)
     return uploads
 
