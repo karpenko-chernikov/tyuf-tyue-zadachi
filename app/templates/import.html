@@ -255,30 +255,33 @@ const parseImportDt = (raw) => {
   return Number.isNaN(t) ? null : t;
 };
 
+let ideaOptionsCache = null;
+const invalidateIdeaOptions = () => {
+  ideaOptionsCache = null;
+};
+
 const collectIdeaOptions = () => {
   const byValue = new Map();
-  document.querySelectorAll('[data-import-row]').forEach((row) => {
-    const kind = row.querySelector('[data-kind]')?.value;
+  // только строки-идеи (класс ставит sync) — не сканируем все 1700+ без нужды
+  document.querySelectorAll('[data-import-row].kind-idea').forEach((row) => {
     const draftInput = row.querySelector('input[name^="draft_key_"]');
     let draftKey = (draftInput?.value || '').trim();
     const idx = row.dataset.rowIndex;
-    if (kind === 'idea') {
-      if (!draftKey) {
-        draftKey = `draft_${idx}`;
-        if (draftInput) draftInput.value = draftKey;
-      }
-      const num = (row.querySelector('input[name^="idea_number_"]')?.value || '').trim();
-      const title = (row.querySelector('[data-title-input]')?.value || '').trim();
-      const dt = row.querySelector('input[name^="telegram_datetime_"]')?.value || '';
-      const prefix = draftKey.startsWith('task:') ? 'Уже в базе' : 'Новая';
-      const numPart = num ? `№ ${num}` : '№ ?';
-      const titlePart = title ? ` — ${title.slice(0, 50)}` : '';
-      byValue.set(draftKey, {
-        value: draftKey,
-        label: `${prefix}: ${numPart}${titlePart}`,
-        dt,
-      });
+    if (!draftKey) {
+      draftKey = `draft_${idx}`;
+      if (draftInput) draftInput.value = draftKey;
     }
+    const num = (row.querySelector('input[name^="idea_number_"]')?.value || '').trim();
+    const title = (row.querySelector('[data-title-input]')?.value || '').trim();
+    const dt = row.querySelector('input[name^="telegram_datetime_"]')?.value || '';
+    const prefix = draftKey.startsWith('task:') ? 'Уже в базе' : 'Новая';
+    const numPart = num ? `№ ${num}` : '№ ?';
+    const titlePart = title ? ` — ${title.slice(0, 50)}` : '';
+    byValue.set(draftKey, {
+      value: draftKey,
+      label: `${prefix}: ${numPart}${titlePart}`,
+      dt,
+    });
   });
   (existingLinks || []).forEach((opt) => {
     if (!opt?.value || byValue.has(opt.value)) return;
@@ -289,6 +292,11 @@ const collectIdeaOptions = () => {
     });
   });
   return [...byValue.values()];
+};
+
+const getIdeaOptions = () => {
+  if (!ideaOptionsCache) ideaOptionsCache = collectIdeaOptions();
+  return ideaOptionsCache;
 };
 
 const sortOptionsForRow = (options, rowDt) => {
@@ -306,40 +314,42 @@ const sortOptionsForRow = (options, rowDt) => {
     if (t <= ref) before.push(o);
     else after.push(o);
   });
-  // ближайшая до → дальше в прошлое; потом ближайшая после → дальше в будущее
   before.sort((a, b) => parseImportDt(b.dt) - parseImportDt(a.dt));
   after.sort((a, b) => parseImportDt(a.dt) - parseImportDt(b.dt));
   return [...before, ...after, ...other];
 };
 
-const refreshLinkSelects = () => {
-  const ideas = collectIdeaOptions();
-  document.querySelectorAll('[data-link-to]').forEach((sel) => {
-    const row = sel.closest('[data-import-row]');
-    const rowDt = row?.querySelector('input[name^="telegram_datetime_"]')?.value || '';
-    const current = sel.value;
-    const sorted = sortOptionsForRow(ideas, rowDt);
-    sel.innerHTML = '';
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = '— выберите —';
-    sel.appendChild(empty);
-    sorted.forEach((o) => {
-      const opt = document.createElement('option');
-      opt.value = o.value;
-      opt.textContent = o.label;
-      opt.dataset.dt = o.dt || '';
-      if (o.value === current) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    if (current && ![...sel.options].some((o) => o.value === current)) {
-      const orphan = document.createElement('option');
-      orphan.value = current;
-      orphan.textContent = current;
-      orphan.selected = true;
-      sel.appendChild(orphan);
+/** Пересобираем только один select — при открытии, не на каждый ввод. */
+const refreshLinkSelect = (sel) => {
+  if (!sel) return;
+  const row = sel.closest('[data-import-row]');
+  const rowDt = row?.querySelector('input[name^="telegram_datetime_"]')?.value || '';
+  const current = sel.value;
+  const sorted = sortOptionsForRow(getIdeaOptions(), rowDt);
+  const frag = document.createDocumentFragment();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = '— выберите —';
+  frag.appendChild(empty);
+  let hasCurrent = !current;
+  sorted.forEach((o) => {
+    const opt = document.createElement('option');
+    opt.value = o.value;
+    opt.textContent = o.label;
+    if (o.value === current) {
+      opt.selected = true;
+      hasCurrent = true;
     }
+    frag.appendChild(opt);
   });
+  if (current && !hasCurrent) {
+    const orphan = document.createElement('option');
+    orphan.value = current;
+    orphan.textContent = current;
+    orphan.selected = true;
+    frag.appendChild(orphan);
+  }
+  sel.replaceChildren(frag);
 };
 
 document.querySelectorAll('[data-import-row]').forEach((row) => {
@@ -363,21 +373,18 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
     if (commentTextLabel) commentTextLabel.classList.toggle('hidden', kind !== 'comment');
-    if (mediaOnlyHint) {
-      mediaOnlyHint.classList.toggle('hidden', kind !== 'media');
-    }
+    if (mediaOnlyHint) mediaOnlyHint.classList.toggle('hidden', kind !== 'media');
     if (mediaHint) {
       if (kind === 'media') {
-        mediaHint.innerHTML = 'Тип «Файлы к условию» — приложатся к задаче (как фото в условии).';
+        mediaHint.textContent = 'Тип «Файлы к условию» — приложатся к задаче (как фото в условии).';
       } else if (kind === 'comment') {
-        mediaHint.innerHTML = 'Тип «Комментарий» — приложатся к комментарию (нужен текст или будет «(файл)»).';
+        mediaHint.textContent = 'Тип «Комментарий» — приложатся к комментарию (нужен текст или будет «(файл)»).';
       } else if (kind === 'idea') {
-        mediaHint.innerHTML = 'У идеи файлы из этого сообщения сразу идут к условию задачи.';
+        mediaHint.textContent = 'У идеи файлы из этого сообщения сразу идут к условию задачи.';
       } else {
-        mediaHint.innerHTML = 'Выберите тип: <strong>Файлы к условию</strong> или <strong>Комментарий</strong> — от этого зависит, куда лягут файлы.';
+        mediaHint.textContent = 'Выберите тип: «Файлы к условию» или «Комментарий» — от этого зависит, куда лягут файлы.';
       }
     }
-    // required только у обработанных идей — иначе браузер блокирует весь submit
     if (titleInput) titleInput.required = kind === 'idea' && isReviewed;
     if (kind === 'idea') {
       const draftInput = row.querySelector('input[name^="draft_key_"]');
@@ -388,24 +395,26 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
   };
   kindSel.addEventListener('change', () => {
     sync();
-    refreshLinkSelects();
+    invalidateIdeaOptions();
   });
   reviewed?.addEventListener('change', () => {
     sync();
     updateReviewedCount();
   });
-  titleInput?.addEventListener('input', refreshLinkSelects);
-  ideaNumberInput?.addEventListener('input', refreshLinkSelects);
-  dtInput?.addEventListener('change', refreshLinkSelects);
+  // не пересобираем списки на каждую букву — только сбрасываем кэш
+  titleInput?.addEventListener('input', invalidateIdeaOptions);
+  ideaNumberInput?.addEventListener('input', invalidateIdeaOptions);
+  dtInput?.addEventListener('change', invalidateIdeaOptions);
   sync();
 });
 
 document.querySelectorAll('[data-link-to]').forEach((sel) => {
-  sel.addEventListener('focus', refreshLinkSelects);
+  const prepare = () => refreshLinkSelect(sel);
+  sel.addEventListener('focus', prepare);
+  sel.addEventListener('mousedown', prepare);
 });
 
 updateReviewedCount();
-refreshLinkSelects();
 
 document.getElementById('import-commit-form')?.addEventListener('submit', (e) => {
   const reviewedRows = [...document.querySelectorAll('[data-import-row]')].filter(
