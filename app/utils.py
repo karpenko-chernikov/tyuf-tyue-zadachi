@@ -18,6 +18,26 @@ def parse_idea_number(text: str):
     return int(match.group(1)) if match else None
 
 
+def parse_idea_number_input(value: str | None) -> int | None:
+    """Поле формы: '8', '8(2)', '№ 8' → 8. Суффикс (2) в поле писать не нужно."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        return int(raw)
+    # 8(2) / № 8 / Идея 8
+    m = re.match(r"^(?:идея\s*)?(?:№|#)?\s*(\d+)\s*(?:\(\d+\))?$", raw, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"(\d+)", raw)
+    if m:
+        return int(m.group(1))
+    raise ValueError(
+        "Номер идеи должен быть целым числом (например 8). "
+        "Не пишите 8(2) — суффикс (2) появится сам, если номер 8 уже есть"
+    )
+
+
 def is_kapitany(text: str) -> bool:
     return bool(KAPITANY_RE.search(text or ""))
 

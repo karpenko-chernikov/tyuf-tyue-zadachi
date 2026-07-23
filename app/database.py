@@ -15,7 +15,27 @@ DATA_DIR.mkdir(exist_ok=True)
 BACKUP_DIR = DATA_DIR / "backups"
 DB_PATH = DATA_DIR / "zadachi.db"
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
+
+def _resolve_database_url(raw: str | None) -> str:
+    """Относительный sqlite:///./data/... всегда ведём к абсолютному пути проекта."""
+    if not raw:
+        return f"sqlite:///{DB_PATH}"
+    url = raw.strip()
+    if not url.startswith("sqlite:///"):
+        return url
+    rest = url[len("sqlite:///") :]
+    if rest == ":memory:" or rest.startswith("file:"):
+        return url
+    path = Path(rest)
+    if not path.is_absolute():
+        path = (BASE_DIR / path).resolve()
+    return f"sqlite:///{path}"
+
+
+DATABASE_URL = _resolve_database_url(os.getenv("DATABASE_URL"))
+# Для бэкапов: фактический файл SQLite
+if DATABASE_URL.startswith("sqlite:///") and not DATABASE_URL.endswith(":memory:"):
+    DB_PATH = Path(DATABASE_URL[len("sqlite:///") :])
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Upl
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import change_password, login_required
@@ -55,6 +55,7 @@ from app.utils import (
     format_idea_label,
     format_idea_title,
     parse_datetime_local,
+    parse_idea_number_input,
     parse_paste,
     status_pill_class,
 )
@@ -632,18 +633,16 @@ def _build_task_from_form(
 
     if not condition.strip():
         raise ValueError("Заполните условие задачи")
+    author = normalize_author(author, default="")
     if not author.strip():
         raise ValueError("Укажите автора задачи")
     if not naznachenie.strip():
         raise ValueError("Выберите назначение")
 
     try:
-        idea_num = int(idea_number.strip()) if idea_number.strip() else None
-    except ValueError:
-        raise ValueError(
-            "Номер идеи должен быть целым числом (например 15). "
-            "Суффикс (2) появится сам, если такой номер уже есть"
-        )
+        idea_num = parse_idea_number_input(idea_number)
+    except ValueError as e:
+        raise ValueError(str(e)) from e
 
     if status == Status.METODKOM.value and naznachenie not in METODKOM_ONLY_FOR:
         raise ValueError("Статус «Отправлена в методкомиссию» только для ТЮФ / ТЮФ и ТЮЕ")
@@ -1029,7 +1028,7 @@ async def update_task(
             record_file_added(db, task.id, user, att.filename, for_comment=False)
         db.commit()
         return RedirectResponse(f"/tasks/{task_id}", status_code=303)
-    except IntegrityError:
+    except (IntegrityError, OperationalError) as e:
         db.rollback()
         form = {
             "idea_number": idea_number,
@@ -1051,6 +1050,14 @@ async def update_task(
             "etap_kk": etap_kk,
         }
         task_files_existing = [a for a in task.attachments if a.comment_id is None]
+        msg = str(e.orig if getattr(e, "orig", None) else e)
+        if "readonly" in msg.lower():
+            error = "База данных сейчас только для чтения — перезапустите приложение (./run.sh)."
+        else:
+            error = (
+                "Не удалось сохранить (конфликт данных). "
+                "Повторяющийся номер идеи разрешён — если ошибка про дату Telegram, сдвиньте время на минуту."
+            )
         return templates.TemplateResponse(
             request,
             "form.html",
@@ -1059,7 +1066,7 @@ async def update_task(
                 user=user,
                 task=task,
                 form=form,
-                error="Не удалось сохранить (конфликт данных). Попробуйте ещё раз или измените дату в Telegram.",
+                error=error,
                 status_labels=_available_statuses(naznachenie),
                 task_files=task_files_existing,
             ),

@@ -28,9 +28,10 @@
   <form method="post" action="{% if task %}/tasks/{{ task.id }}{% else %}/tasks{% endif %}" enctype="multipart/form-data">
     <div class="grid-2">
       <label>Номер идеи
-        <input type="number" name="idea_number"
-          value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}">
-        <span class="hint">Можно повторять тот же номер — вторая задача сама станет 15(2). В поле пишите только число, например 15</span>
+        <input type="text" name="idea_number" inputmode="numeric" autocomplete="off"
+          value="{% if f.idea_number is defined %}{{ f.idea_number }}{% elif task and task.idea_number is not none %}{{ task.idea_number }}{% elif p.idea_number %}{{ p.idea_number }}{% endif %}"
+          placeholder="например 8">
+        <span class="hint">Пишите только число, например <strong>8</strong>. Если восьмерка уже есть — эта задача сама станет № 8(2). Не пишите «8(2)» вручную.</span>
       </label>
       <label>Дата и время в Telegram *
         <input type="datetime-local" name="telegram_datetime" required
