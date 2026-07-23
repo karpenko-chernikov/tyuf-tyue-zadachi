@@ -433,15 +433,26 @@ document.getElementById('import-commit-form')?.addEventListener('submit', (e) =>
     return;
   }
   const missing = [];
+  const missingLinks = [];
   reviewedRows.forEach((row) => {
     const kind = row.querySelector('[data-kind]')?.value;
-    if (kind !== 'idea') return;
-    const title = row.querySelector('[data-title-input]');
-    if (title && !title.value.trim()) {
-      missing.push(title);
-      title.classList.add('field-error');
-    } else if (title) {
-      title.classList.remove('field-error');
+    if (kind === 'idea') {
+      const title = row.querySelector('[data-title-input]');
+      if (title && !title.value.trim()) {
+        missing.push(title);
+        title.classList.add('field-error');
+      } else if (title) {
+        title.classList.remove('field-error');
+      }
+    }
+    if (kind === 'comment' || kind === 'media') {
+      const link = row.querySelector('[data-link-to]');
+      if (link && !link.value.trim()) {
+        missingLinks.push(link);
+        link.classList.add('field-error');
+      } else if (link) {
+        link.classList.remove('field-error');
+      }
     }
   });
   if (missing.length) {
@@ -449,6 +460,15 @@ document.getElementById('import-commit-form')?.addEventListener('submit', (e) =>
     missing[0].focus();
     missing[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
     alert(`У обработанных идей укажите название (пусто: ${missing.length}).`);
+    return;
+  }
+  if (missingLinks.length) {
+    e.preventDefault();
+    missingLinks[0].focus();
+    missingLinks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alert(
+      `У комментария/файлов выберите задачу в поле «К идее» (не указано: ${missingLinks.length}).`
+    );
     return;
   }
   if (!confirm(`Сохранить в базу ${reviewedRows.length} обработанных строк? Остальные не трогаем.`)) {

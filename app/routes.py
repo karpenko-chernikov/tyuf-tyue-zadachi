@@ -1593,6 +1593,33 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             status_code=400,
         )
 
+    missing_links: list[int] = []
+    for i in range(row_count):
+        if not _is_reviewed(i):
+            continue
+        kind = (form.get(f"kind_{i}") or "skip").strip()
+        if kind not in ("comment", "media"):
+            continue
+        link_to = (form.get(f"link_to_{i}") or "").strip()
+        if not link_to:
+            missing_links.append(i + 1)
+    if missing_links:
+        nums = ", ".join(str(n) for n in missing_links[:20])
+        extra = f" … ещё {len(missing_links) - 20}" if len(missing_links) > 20 else ""
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(
+                db,
+                user,
+                error=(
+                    "Не сохранено: у комментария/файлов к задаче не указано «К идее» "
+                    f"(строки: {nums}{extra}). Выберите задачу и попробуйте снова."
+                ),
+            ),
+            status_code=400,
+        )
+
     backup_sqlite_db()
 
     created_tasks = 0

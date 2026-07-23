@@ -1082,7 +1082,8 @@ textarea { resize: vertical; }
   font-size: 14px;
   line-height: 1.45;
 }
-.import-row input.field-error {
+.import-row input.field-error,
+.import-row select.field-error {
   border-color: #b00020;
   background: #fff5f5;
 }
