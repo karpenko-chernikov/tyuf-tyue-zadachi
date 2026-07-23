@@ -80,7 +80,7 @@ Python · FastAPI · SQLite · Jinja2 · SortableJS
 
 ```
 app/           — backend и веб-интерфейс
-data/          — SQLite-база (задачи + хеши пользователей)
+data/          — локальная SQLite-база (в git не лежит; на сервер передаём отдельно)
 .env.example   — шаблон конфигурации
 Dockerfile     — сборка для сервера
 run.sh         — локальный запуск
