@@ -81,7 +81,7 @@
 
     {% for r in rows %}
     {% set i = loop.index0 %}
-    <article class="import-row kind-{{ r.kind }} conf-{{ r.confidence }}" data-import-row>
+    <article class="import-row kind-{{ r.kind }} conf-{{ r.confidence }}" data-import-row data-row-index="{{ i }}">
       <div class="import-row-head">
         <label class="import-reviewed">
           <input type="checkbox" name="reviewed_{{ i }}" value="1" data-reviewed>
@@ -193,16 +193,19 @@
 
       <div data-panel-comment {% if r.kind not in ('comment', 'media') %}class="hidden"{% endif %}>
         <label>К идее
-          <select name="link_to_{{ i }}">
+          <select name="link_to_{{ i }}" data-link-to>
             <option value="">— выберите —</option>
             {% for idea in rows if idea.draft_key %}
-            <option value="{{ idea.draft_key }}" {% if r.link_to == idea.draft_key %}selected{% endif %}>
+            <option value="{{ idea.draft_key }}"
+              data-dt="{{ idea.telegram_datetime or '' }}"
+              {% if r.link_to == idea.draft_key %}selected{% endif %}>
               {% if idea.draft_key.startswith('task:') %}Уже в базе{% else %}Новая{% endif %}:
               № {% if idea.idea_number is not none %}{{ idea.idea_number }}{% else %}?{% endif %}{% if idea.title %} — {{ idea.title[:50] }}{% endif %}
             </option>
             {% endfor %}
             {% for opt in existing_links %}
-            <option value="{{ opt.value }}" {% if r.link_to == opt.value %}selected{% endif %}>В базе: {{ opt.label }}</option>
+            <option value="{{ opt.value }}" data-dt="{{ opt.dt or '' }}"
+              {% if r.link_to == opt.value %}selected{% endif %}>В базе: {{ opt.label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -233,6 +236,8 @@
 </section>
 
 <script>
+const existingLinks = {{ existing_links|tojson }};
+
 const updateReviewedCount = () => {
   const total = document.querySelectorAll('[data-import-row]').length;
   const n = document.querySelectorAll('[data-reviewed]:checked').length;
@@ -244,6 +249,99 @@ const updateReviewedCount = () => {
   });
 };
 
+const parseImportDt = (raw) => {
+  if (!raw) return null;
+  const t = Date.parse(String(raw).replace(' ', 'T'));
+  return Number.isNaN(t) ? null : t;
+};
+
+const collectIdeaOptions = () => {
+  const byValue = new Map();
+  document.querySelectorAll('[data-import-row]').forEach((row) => {
+    const kind = row.querySelector('[data-kind]')?.value;
+    const draftInput = row.querySelector('input[name^="draft_key_"]');
+    let draftKey = (draftInput?.value || '').trim();
+    const idx = row.dataset.rowIndex;
+    if (kind === 'idea') {
+      if (!draftKey) {
+        draftKey = `draft_${idx}`;
+        if (draftInput) draftInput.value = draftKey;
+      }
+      const num = (row.querySelector('input[name^="idea_number_"]')?.value || '').trim();
+      const title = (row.querySelector('[data-title-input]')?.value || '').trim();
+      const dt = row.querySelector('input[name^="telegram_datetime_"]')?.value || '';
+      const prefix = draftKey.startsWith('task:') ? 'Уже в базе' : 'Новая';
+      const numPart = num ? `№ ${num}` : '№ ?';
+      const titlePart = title ? ` — ${title.slice(0, 50)}` : '';
+      byValue.set(draftKey, {
+        value: draftKey,
+        label: `${prefix}: ${numPart}${titlePart}`,
+        dt,
+      });
+    }
+  });
+  (existingLinks || []).forEach((opt) => {
+    if (!opt?.value || byValue.has(opt.value)) return;
+    byValue.set(opt.value, {
+      value: opt.value,
+      label: `В базе: ${opt.label}`,
+      dt: opt.dt || '',
+    });
+  });
+  return [...byValue.values()];
+};
+
+const sortOptionsForRow = (options, rowDt) => {
+  const ref = parseImportDt(rowDt);
+  if (ref == null) return options.slice();
+  const before = [];
+  const after = [];
+  const other = [];
+  options.forEach((o) => {
+    const t = parseImportDt(o.dt);
+    if (t == null) {
+      other.push(o);
+      return;
+    }
+    if (t <= ref) before.push(o);
+    else after.push(o);
+  });
+  // ближайшая до → дальше в прошлое; потом ближайшая после → дальше в будущее
+  before.sort((a, b) => parseImportDt(b.dt) - parseImportDt(a.dt));
+  after.sort((a, b) => parseImportDt(a.dt) - parseImportDt(b.dt));
+  return [...before, ...after, ...other];
+};
+
+const refreshLinkSelects = () => {
+  const ideas = collectIdeaOptions();
+  document.querySelectorAll('[data-link-to]').forEach((sel) => {
+    const row = sel.closest('[data-import-row]');
+    const rowDt = row?.querySelector('input[name^="telegram_datetime_"]')?.value || '';
+    const current = sel.value;
+    const sorted = sortOptionsForRow(ideas, rowDt);
+    sel.innerHTML = '';
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '— выберите —';
+    sel.appendChild(empty);
+    sorted.forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      opt.dataset.dt = o.dt || '';
+      if (o.value === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (current && ![...sel.options].some((o) => o.value === current)) {
+      const orphan = document.createElement('option');
+      orphan.value = current;
+      orphan.textContent = current;
+      orphan.selected = true;
+      sel.appendChild(orphan);
+    }
+  });
+};
+
 document.querySelectorAll('[data-import-row]').forEach((row) => {
   const kindSel = row.querySelector('[data-kind]');
   const textArea = row.querySelector('textarea[name^="text_"]');
@@ -252,6 +350,8 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
   const mediaHint = row.querySelector('[data-media-hint]');
   const commentTextLabel = row.querySelector('[data-comment-text-label]');
   const mediaOnlyHint = row.querySelector('[data-media-only-hint]');
+  const ideaNumberInput = row.querySelector('input[name^="idea_number_"]');
+  const dtInput = row.querySelector('input[name^="telegram_datetime_"]');
   const sync = () => {
     const kind = kindSel.value;
     const isReviewed = !!reviewed?.checked;
@@ -279,15 +379,33 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
     }
     // required только у обработанных идей — иначе браузер блокирует весь submit
     if (titleInput) titleInput.required = kind === 'idea' && isReviewed;
+    if (kind === 'idea') {
+      const draftInput = row.querySelector('input[name^="draft_key_"]');
+      if (draftInput && !(draftInput.value || '').trim()) {
+        draftInput.value = `draft_${row.dataset.rowIndex}`;
+      }
+    }
   };
-  kindSel.addEventListener('change', sync);
+  kindSel.addEventListener('change', () => {
+    sync();
+    refreshLinkSelects();
+  });
   reviewed?.addEventListener('change', () => {
     sync();
     updateReviewedCount();
   });
+  titleInput?.addEventListener('input', refreshLinkSelects);
+  ideaNumberInput?.addEventListener('input', refreshLinkSelects);
+  dtInput?.addEventListener('change', refreshLinkSelects);
   sync();
 });
+
+document.querySelectorAll('[data-link-to]').forEach((sel) => {
+  sel.addEventListener('focus', refreshLinkSelects);
+});
+
 updateReviewedCount();
+refreshLinkSelects();
 
 document.getElementById('import-commit-form')?.addEventListener('submit', (e) => {
   const reviewedRows = [...document.querySelectorAll('[data-import-row]')].filter(

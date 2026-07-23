@@ -1293,7 +1293,10 @@ def _import_existing_link_options(db: Session) -> list[dict]:
         label = format_idea_label(task)
         if title:
             label = f"{label} — {title[:60]}"
-        options.append({"value": f"task:{task.id}", "label": label})
+        dt = ""
+        if task.telegram_datetime:
+            dt = task.telegram_datetime.strftime("%Y-%m-%dT%H:%M")
+        options.append({"value": f"task:{task.id}", "label": label, "dt": dt})
     return options
 
 
