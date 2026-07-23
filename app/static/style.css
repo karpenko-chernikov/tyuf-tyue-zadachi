@@ -1055,6 +1055,10 @@ textarea { resize: vertical; }
   border-color: #b00020;
   background: #fff5f5;
 }
+.import-media-hint {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
 .import-media-count { font-size: 13px; color: var(--brand); font-weight: 700; }
 .import-media-summary { margin: 10px 0 0; }
 .import-media-block {

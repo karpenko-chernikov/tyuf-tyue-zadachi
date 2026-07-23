@@ -90,8 +90,8 @@
         <label>Тип
           <select name="kind_{{ i }}" data-kind>
             <option value="idea" {% if r.kind == 'idea' %}selected{% endif %}>Идея</option>
-            <option value="comment" {% if r.kind == 'comment' %}selected{% endif %}>Комментарий</option>
-            <option value="media" {% if r.kind == 'media' %}selected{% endif %}>Медиа к задаче</option>
+            <option value="comment" {% if r.kind == 'comment' %}selected{% endif %}>Комментарий (+ файлы к нему)</option>
+            <option value="media" {% if r.kind == 'media' %}selected{% endif %}>Файлы к условию задачи</option>
             <option value="skip" {% if r.kind == 'skip' %}selected{% endif %}>Пропустить</option>
           </select>
         </label>
@@ -123,7 +123,18 @@
 
       {% if r.media_paths %}
       <div class="import-media-block">
-        <div class="field-label">Файлы (приложатся при сохранении)</div>
+        <div class="field-label">Файлы</div>
+        <p class="hint import-media-hint" data-media-hint>
+          {% if r.kind == 'media' %}
+          Тип «Файлы к условию» — приложатся к задаче (как фото в условии).
+          {% elif r.kind == 'comment' %}
+          Тип «Комментарий» — приложатся к комментарию (нужен текст или будет «(файл)»).
+          {% elif r.kind == 'idea' %}
+          У идеи файлы из этого сообщения сразу идут к условию задачи.
+          {% else %}
+          Выберите тип: <strong>Файлы к условию</strong> или <strong>Комментарий</strong> — от этого зависит, куда лягут файлы.
+          {% endif %}
+        </p>
         <div class="import-media-grid">
           {% for p in r.media_paths %}
           {% set name = p.split('/')[-1] %}
@@ -195,9 +206,12 @@
             {% endfor %}
           </select>
         </label>
-        <label>Текст комментария
+        <label data-comment-text-label {% if r.kind == 'media' %}class="hidden"{% endif %}>Текст комментария
           <textarea name="text_{{ i }}" rows="3">{{ r.text or '' }}</textarea>
         </label>
+        <p class="hint{% if r.kind != 'media' %} hidden{% endif %}" data-media-only-hint>
+          Файлы пойдут в условие выбранной задачи, без комментария.
+        </p>
       </div>
 
       <div data-panel-skip {% if r.kind != 'skip' %}class="hidden"{% endif %}>
@@ -235,6 +249,9 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
   const textArea = row.querySelector('textarea[name^="text_"]');
   const titleInput = row.querySelector('[data-title-input]');
   const reviewed = row.querySelector('[data-reviewed]');
+  const mediaHint = row.querySelector('[data-media-hint]');
+  const commentTextLabel = row.querySelector('[data-comment-text-label]');
+  const mediaOnlyHint = row.querySelector('[data-media-only-hint]');
   const sync = () => {
     const kind = kindSel.value;
     const isReviewed = !!reviewed?.checked;
@@ -245,6 +262,21 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
     row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment' && kind !== 'media');
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
+    if (commentTextLabel) commentTextLabel.classList.toggle('hidden', kind !== 'comment');
+    if (mediaOnlyHint) {
+      mediaOnlyHint.classList.toggle('hidden', kind !== 'media');
+    }
+    if (mediaHint) {
+      if (kind === 'media') {
+        mediaHint.innerHTML = 'Тип «Файлы к условию» — приложатся к задаче (как фото в условии).';
+      } else if (kind === 'comment') {
+        mediaHint.innerHTML = 'Тип «Комментарий» — приложатся к комментарию (нужен текст или будет «(файл)»).';
+      } else if (kind === 'idea') {
+        mediaHint.innerHTML = 'У идеи файлы из этого сообщения сразу идут к условию задачи.';
+      } else {
+        mediaHint.innerHTML = 'Выберите тип: <strong>Файлы к условию</strong> или <strong>Комментарий</strong> — от этого зависит, куда лягут файлы.';
+      }
+    }
     // required только у обработанных идей — иначе браузер блокирует весь submit
     if (titleInput) titleInput.required = kind === 'idea' && isReviewed;
   };
