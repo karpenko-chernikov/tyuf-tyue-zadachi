@@ -163,8 +163,8 @@
         <label>Условие
           <textarea name="condition_{{ i }}" rows="4">{{ r.condition or r.text or '' }}</textarea>
         </label>
-        <label>Ссылки
-          <textarea name="sources_{{ i }}" rows="2">{{ r.sources or '' }}</textarea>
+        <label>Ссылки / источники
+          <textarea name="sources_{{ i }}" rows="2" placeholder="https://… (по одной на строку)">{{ r.sources or '' }}</textarea>
         </label>
       </div>
 
@@ -190,6 +190,11 @@
 
       <div data-panel-skip {% if r.kind != 'skip' %}class="hidden"{% endif %}>
         <pre class="import-raw">{{ r.text or '(пусто)' }}</pre>
+        {% if r.sources %}
+        <label>Ссылки (добавлены к идее выше)
+          <textarea name="sources_{{ i }}" rows="2" readonly>{{ r.sources }}</textarea>
+        </label>
+        {% endif %}
       </div>
     </article>
     {% endfor %}

@@ -10,11 +10,17 @@ from pathlib import Path
 from typing import Any
 
 from app.enums import DEFAULT_COMMENT_AUTHOR, DEFAULT_NAZNACHENIE, DEFAULT_TASK_AUTHOR, normalize_author
-from app.utils import IDEA_RE, parse_paste
+from app.utils import IDEA_RE, extract_urls, parse_paste
 
 # Упоминание идеи в комментарии без заголовка новой идеи
 IDEA_MENTION_RE = re.compile(
     r"(?:^|[\s,.:;—–\-])(?:к\s+)?иде[еия]\s*(?:№|#|номер)?\s*(\d+)",
+    re.IGNORECASE,
+)
+
+# Короткий хвост вокруг ссылок («сюда же», «статья», …) — не отдельная идея
+_SOURCE_TAIL_RE = re.compile(
+    r"^(?:сюда\s+же|см\.?|смотри|ссылка|источник|вот|ещё|еще|также|тоже)?[\s.,:;!—–\-]*$",
     re.IGNORECASE,
 )
 
@@ -73,6 +79,122 @@ def extract_message_text(raw: Any) -> str:
         return "".join(parts)
     return str(raw)
 
+
+def extract_urls_from_message(msg: dict, text: str | None = None) -> list[str]:
+    """Ссылки из текста и text_entities (в т.ч. text_link.href)."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(url: str | None) -> None:
+        u = (url or "").strip().rstrip(").,;]")
+        if not u:
+            return
+        if not u.startswith("http"):
+            if u.startswith("www."):
+                u = "https://" + u
+            else:
+                return
+        if u not in seen:
+            seen.add(u)
+            found.append(u)
+
+    body = text if text is not None else extract_message_text(msg.get("text"))
+    for u in extract_urls(body):
+        add(u)
+
+    for ent in msg.get("text_entities") or []:
+        if not isinstance(ent, dict):
+            continue
+        et = ent.get("type")
+        if et in ("link", "url"):
+            add(ent.get("text"))
+        elif et == "text_link":
+            add(ent.get("href") or ent.get("text"))
+        elif et == "email":
+            continue
+
+    # text как массив entities (альтернативный формат Desktop)
+    raw = msg.get("text")
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                if item.get("type") in ("link", "url"):
+                    add(item.get("text"))
+                href = item.get("href")
+                if href:
+                    add(href)
+
+    return found
+
+
+def _merge_sources(*parts: str | None) -> str | None:
+    seen: set[str] = set()
+    out: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        for line in str(part).splitlines():
+            u = line.strip()
+            if u and u not in seen:
+                seen.add(u)
+                out.append(u)
+    return "\n".join(out) if out else None
+
+
+def _sources_blob(urls: list[str]) -> str | None:
+    return "\n".join(urls) if urls else None
+
+
+def _video_from_urls(urls: list[str]) -> tuple[bool, str | None]:
+    video = next(
+        (
+            u
+            for u in urls
+            if any(x in u.lower() for x in ("youtube", "youtu.be", "instagram", "rutube", "vk.com/video", "vkvideo"))
+        ),
+        None,
+    )
+    return bool(video), video
+
+
+def _text_without_urls(text: str, urls: list[str]) -> str:
+    rest = text or ""
+    for u in urls:
+        rest = rest.replace(u, "")
+    rest = re.sub(r"\s+", " ", rest).strip(" \t\n\r.,;:!?—–-")
+    return rest
+
+
+def _enrich_text_with_urls(text: str, urls: list[str]) -> str:
+    """Добавляет в текст href из text_link, если самой ссылки в тексте нет."""
+    missing = [u for u in urls if u and u not in (text or "")]
+    if not missing:
+        return text or ""
+    base = (text or "").rstrip()
+    return f"{base}\n\n" + "\n".join(missing) if base else "\n".join(missing)
+
+
+def _is_source_followup(text: str, urls: list[str], media_paths: list[str]) -> bool:
+    """Сообщение почти только со ссылками → источник к предыдущей идее."""
+    if not urls or media_paths:
+        return False
+    if _looks_like_new_idea(text):
+        return False
+    rest = _text_without_urls(text, urls)
+    if not rest:
+        return True
+    if len(rest) <= 40 and _SOURCE_TAIL_RE.match(rest):
+        return True
+    if len(rest) <= 60 and re.search(
+        r"стать|вики|wiki|источник|ссылк|habr|perplexity|nature|plos|youtube|rutube",
+        rest,
+        re.IGNORECASE,
+    ):
+        return True
+    # несколько ссылок и почти нет текста
+    if len(urls) >= 2 and len(rest) <= 30:
+        return True
+    return False
 
 def extract_media_paths(msg: dict) -> list[str]:
     paths: list[str] = []
@@ -331,6 +453,7 @@ def classify_messages(
         if is_idea and msg_id_i is not None:
             idea_msg_ids.add(msg_id_i)
 
+        urls = extract_urls_from_message(msg, text)
         provisional.append(
             {
                 "msg_id": msg_id_i,
@@ -341,6 +464,7 @@ def classify_messages(
                 "reply_to": reply_to,
                 "is_idea": is_idea,
                 "media_paths": media_paths,
+                "urls": urls,
             }
         )
 
@@ -360,6 +484,11 @@ def classify_messages(
             dup_id, dup_label = existing_by_minute[dt_local]
             notes.append(f"Уже в базе: {dup_label}")
 
+        urls: list[str] = list(item.get("urls") or [])
+        # text_link.href часто не совпадает с видимым текстом («здесь», «eyes»)
+        if urls and not item["is_idea"]:
+            text = _enrich_text_with_urls(text, urls)
+
         if item["is_idea"]:
             parsed = parse_paste(text)
             draft_key = f"draft_{len(idea_drafts)}"
@@ -369,6 +498,21 @@ def classify_messages(
             has_local_video = any(
                 p.lower().endswith((".mp4", ".mov", ".webm", ".mkv")) for p in media_paths
             )
+            sources = _merge_sources(parsed.get("sources"), _sources_blob(urls))
+            has_vid, video_url = _video_from_urls(urls)
+            if not video_url:
+                video_url = parsed.get("video_url")
+            if sources:
+                notes.append(f"Ссылок: {len(sources.splitlines())}")
+            # убрать URL из условия, если они ушли в источники
+            condition = parsed.get("condition") or text
+            if condition and urls:
+                cleaned = condition
+                for u in urls:
+                    cleaned = cleaned.replace(u, "")
+                cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+                if cleaned:
+                    condition = cleaned
             row = ImportRow(
                 index=i,
                 msg_id=item["msg_id"],
@@ -382,11 +526,11 @@ def classify_messages(
                 reply_to_msg_id=item["reply_to"],
                 idea_number=parsed.get("idea_number"),
                 title=parsed.get("title"),
-                condition=parsed.get("condition") or text,
+                condition=condition,
                 naznachenie=parsed.get("naznachenie") or DEFAULT_NAZNACHENIE,
-                sources=parsed.get("sources"),
-                has_video=bool(parsed.get("has_video")) or has_local_video,
-                video_url=parsed.get("video_url"),
+                sources=sources,
+                has_video=bool(parsed.get("has_video")) or has_vid or has_local_video,
+                video_url=video_url,
                 media_paths=media_paths,
                 duplicate_task_id=dup_id,
                 duplicate_label=dup_label,
@@ -407,14 +551,45 @@ def classify_messages(
         reply_to_idea = item["reply_to"] is not None and item["reply_to"] in idea_msg_ids
         is_forward = bool(item["forwarded_from"])
         media_only = (not text) and bool(media_paths)
+        source_followup = _is_source_followup(text, urls, media_paths)
 
         link_to: str | None = None
         confidence = "low"
         kind = "skip"
         save = False
         author = normalize_author(item["author"], default=DEFAULT_COMMENT_AUTHOR)
+        row_sources: str | None = None
 
-        if media_only and not is_forward and not reply_to_idea and not mentions:
+        if source_followup and not mentions:
+            # ссылки → в источники идеи (ответ / предыдущая); строку не сохраняем отдельно
+            target: ImportRow | None = None
+            if reply_to_idea:
+                for idea in idea_drafts:
+                    if idea.msg_id == item["reply_to"]:
+                        target = idea
+                        break
+            if target is None:
+                target = last_idea_draft
+            if target and target.draft_key:
+                target.sources = _merge_sources(target.sources, _sources_blob(urls))
+                has_vid, video_url = _video_from_urls(urls)
+                if has_vid:
+                    target.has_video = True
+                    if not target.video_url:
+                        target.video_url = video_url
+                kind = "skip"
+                confidence = "high"
+                save = False
+                link_to = target.draft_key
+                row_sources = _sources_blob(urls)
+                notes.append("Ссылки добавлены к источникам идеи")
+            else:
+                kind = "skip"
+                confidence = "medium"
+                save = False
+                row_sources = _sources_blob(urls)
+                notes.append("Похоже на ссылки-источники, но идея выше не найдена")
+        elif media_only and not is_forward and not reply_to_idea and not mentions:
             # фото/видео без текста → к предыдущей идее как вложение задачи
             kind = "media"
             confidence = "medium"
@@ -472,6 +647,7 @@ def classify_messages(
             telegram_datetime=dt_local,
             forwarded_from=item["forwarded_from"],
             reply_to_msg_id=item["reply_to"],
+            sources=row_sources,
             link_to=link_to,
             media_paths=media_paths,
             duplicate_task_id=dup_id,
