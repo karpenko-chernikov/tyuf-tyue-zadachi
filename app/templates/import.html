@@ -262,8 +262,9 @@ const invalidateIdeaOptions = () => {
 
 const collectIdeaOptions = () => {
   const byValue = new Map();
-  // только строки-идеи (класс ставит sync) — не сканируем все 1700+ без нужды
-  document.querySelectorAll('[data-import-row].kind-idea').forEach((row) => {
+  document.querySelectorAll('[data-import-row]').forEach((row) => {
+    const kind = row.querySelector('[data-kind]')?.value;
+    if (kind !== 'idea') return;
     const draftInput = row.querySelector('input[name^="draft_key_"]');
     let draftKey = (draftInput?.value || '').trim();
     const idx = row.dataset.rowIndex;
@@ -281,6 +282,7 @@ const collectIdeaOptions = () => {
       value: draftKey,
       label: `${prefix}: ${numPart}${titlePart}`,
       dt,
+      isDraft: draftKey.startsWith('draft_'),
     });
   });
   (existingLinks || []).forEach((opt) => {
@@ -289,17 +291,19 @@ const collectIdeaOptions = () => {
       value: opt.value,
       label: `В базе: ${opt.label}`,
       dt: opt.dt || '',
+      isDraft: false,
     });
   });
   return [...byValue.values()];
 };
 
 const getIdeaOptions = () => {
+  // всегда свежий снимок: кэш только внутри одного открытия select
   if (!ideaOptionsCache) ideaOptionsCache = collectIdeaOptions();
   return ideaOptionsCache;
 };
 
-const sortOptionsForRow = (options, rowDt) => {
+const sortByTimeRelative = (options, rowDt) => {
   const ref = parseImportDt(rowDt);
   if (ref == null) return options.slice();
   const before = [];
@@ -319,9 +323,17 @@ const sortOptionsForRow = (options, rowDt) => {
   return [...before, ...after, ...other];
 };
 
+const sortOptionsForRow = (options, rowDt) => {
+  // сначала несохранённые идеи с этой страницы, потом уже лежащие в базе
+  const drafts = options.filter((o) => o.isDraft);
+  const rest = options.filter((o) => !o.isDraft);
+  return [...sortByTimeRelative(drafts, rowDt), ...sortByTimeRelative(rest, rowDt)];
+};
+
 /** Пересобираем только один select — при открытии, не на каждый ввод. */
 const refreshLinkSelect = (sel) => {
   if (!sel) return;
+  invalidateIdeaOptions();
   const row = sel.closest('[data-import-row]');
   const rowDt = row?.querySelector('input[name^="telegram_datetime_"]')?.value || '';
   const current = sel.value;
