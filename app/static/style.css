@@ -385,25 +385,18 @@ textarea { resize: vertical; }
   .page-header { flex-direction: column; }
 }
 
-.author-combo {
-  display: flex;
-  gap: 6px;
-  align-items: stretch;
+.author-field {
   margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.author-combo input[type="text"] {
+.author-field .author-select {
   margin-top: 0;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
 }
-.author-combo .author-pick {
+.author-field .author-custom {
   margin-top: 0;
-  width: 2.6rem;
-  flex-shrink: 0;
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
-  cursor: pointer;
-  font-size: 14px;
 }
 
 .hint { font-weight: 400; color: #8a968f; font-size: 12px; }

@@ -1,10 +1,9 @@
 {% extends "base.html" %}
-{% from "macros.html" import file_picker, attachment_list, author_field, authors_datalist %}
+{% from "macros.html" import file_picker, attachment_list, author_field %}
 {% block title %}{% if task %}Редактирование{% else %}Новая задача{% endif %}{% endblock %}
 {% block content %}
 {% set f = form or {} %}
 {% set p = parsed or {} %}
-{{ authors_datalist('authors-list') }}
 <div class="page-header">
   <h1>{% if task %}Редактирование{% else %}Новая задача{% endif %}</h1>
   <a href="/" class="btn secondary">← К списку</a>
@@ -61,9 +60,9 @@
 
     <div class="grid-3">
       <label>Автор задачи *
-        <span class="hint">выберите из списка или впишите нового</span>
+        <span class="hint">из списка или «Другой…»</span>
         {% set author_val = f.author if f.author is defined else (task.author if task else default_task_author) %}
-        {{ author_field('author', author_val or '', 'Кто предложил', true, 'authors-list') }}
+        {{ author_field('author', author_val or '', 'Имя нового автора', true) }}
       </label>
       <label>Назначение *
         {% set nazn_val = f.naznachenie if f.naznachenie is defined else (task.naznachenie if task else (p.naznachenie or default_naznachenie)) %}
@@ -162,8 +161,8 @@
         {% for c in draft_comments %}
         <div class="comment-row">
           <label>Автор комментария
-            <span class="hint">из списка или новый</span>
-            {{ author_field('comment_authors', c.author or '', 'Кто пишет', false, 'authors-list') }}
+            <span class="hint">из списка или «Другой…»</span>
+            {{ author_field('comment_authors', c.author or '', 'Имя нового автора', false) }}
           </label>
           <label>Текст
             <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…">{{ c.text }}</textarea>
@@ -235,19 +234,27 @@ if (addBtn) {
     row.className = 'comment-row';
     row.innerHTML = `
       <label>Автор комментария
-        <span class="hint">из списка или новый</span>
-        <div class="author-combo">
-          <input type="text" name="comment_authors" list="authors-list"
-            value="{{ default_comment_author }}" placeholder="Кто пишет" autocomplete="off">
-          <select class="author-pick" aria-label="Выбрать автора из списка" title="Выбрать из существующих">
-            <option value="">▾</option>
+        <span class="hint">из списка или «Другой…»</span>
+        <div class="author-field" data-author-field>
+          <select class="author-select" data-author-select data-author-name="comment_authors" name="comment_authors">
+            <option value="">—</option>
             ${authorOptions}
+            <option value="__custom__">Другой…</option>
           </select>
+          <input type="text" class="author-custom hidden" data-author-custom
+            placeholder="Имя нового автора" autocomplete="off">
         </div>
       </label>
       <label>Текст
         <textarea name="comment_texts" rows="3" placeholder="Отзыв, обсуждение…"></textarea>
       </label>`;
+    const select = row.querySelector('[data-author-select]');
+    const def = {{ default_comment_author|tojson }};
+    if (select && def) {
+      for (const opt of select.options) {
+        if (opt.value === def) { select.value = def; break; }
+      }
+    }
     rows.appendChild(row);
   });
 }

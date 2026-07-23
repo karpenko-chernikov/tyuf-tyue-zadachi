@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "macros.html" import file_picker, attachment_list, author_field, authors_datalist %}
+{% from "macros.html" import file_picker, attachment_list, author_field %}
 {% block title %}{{ format_idea_title(task) }}{% endblock %}
 {% block content %}
-{{ authors_datalist('authors-list') }}
 <div class="page-header">
   <h1>
     {{ format_idea_title(task) }}
@@ -106,8 +105,8 @@
   <form method="post" action="/tasks/{{ task.id }}/comments" class="comment-form" enctype="multipart/form-data">
     <h3>Новый комментарий</h3>
     <label>Кто пишет
-      <span class="hint">выберите из списка или впишите нового</span>
-      {{ author_field('author', default_comment_author, 'Имя', true, 'authors-list') }}
+      <span class="hint">из списка или «Другой…»</span>
+      {{ author_field('author', default_comment_author, 'Имя нового автора', true) }}
     </label>
     <label>Текст
       <span class="hint">необязательно, если есть файлы</span>

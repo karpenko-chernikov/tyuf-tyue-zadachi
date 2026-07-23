@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=10">
+  <link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
   {% if user %}
@@ -87,17 +87,37 @@
     });
   });
 
-  // Выпадашка авторов → подставляет имя в текстовое поле (можно и вписать вручную)
-  document.addEventListener('change', (e) => {
-    const pick = e.target.closest('select.author-pick');
-    if (!pick || !pick.value) return;
-    const combo = pick.closest('.author-combo');
-    const input = combo && combo.querySelector('input[type="text"]');
-    if (input) {
-      input.value = pick.value;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+  // Автор: обычный select, «Другой…» открывает поле для нового имени
+  function syncAuthorField(wrap) {
+    const select = wrap.querySelector('[data-author-select]');
+    const custom = wrap.querySelector('[data-author-custom]');
+    if (!select || !custom) return;
+    const name = select.dataset.authorName || 'author';
+    const isCustom = select.value === '__custom__';
+    custom.classList.toggle('hidden', !isCustom);
+    if (isCustom) {
+      select.removeAttribute('name');
+      custom.setAttribute('name', name);
+      custom.required = select.hasAttribute('required') || select.dataset.wasRequired === '1';
+      if (!custom.value) custom.focus();
+    } else {
+      custom.removeAttribute('name');
+      custom.required = false;
+      select.setAttribute('name', name);
     }
-    pick.selectedIndex = 0;
+  }
+
+  document.querySelectorAll('[data-author-field]').forEach((wrap) => {
+    const select = wrap.querySelector('[data-author-select]');
+    if (select && select.required) select.dataset.wasRequired = '1';
+    syncAuthorField(wrap);
+  });
+
+  document.addEventListener('change', (e) => {
+    const select = e.target.closest('[data-author-select]');
+    if (!select) return;
+    const wrap = select.closest('[data-author-field]');
+    if (wrap) syncAuthorField(wrap);
   });
   </script>
 </body>

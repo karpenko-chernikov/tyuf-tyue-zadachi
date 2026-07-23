@@ -1,29 +1,28 @@
 {# Переиспользуемые куски UI #}
 
-{% macro author_field(name, value='', placeholder='Имя', required=false, list_id='authors-list', input_id=none) %}
-<div class="author-combo">
-  <input type="text" name="{{ name }}" {% if input_id %}id="{{ input_id }}"{% endif %}
-    list="{{ list_id }}"
-    value="{{ value }}"
-    placeholder="{{ placeholder }}"
-    autocomplete="off"
-    {% if required %}required{% endif %}>
-  <select class="author-pick" aria-label="Выбрать автора из списка" title="Выбрать из существующих">
-    <option value="">▾</option>
+{% macro author_field(name, value='', placeholder='Имя нового автора', required=false) %}
+{% set known = value in authors %}
+{% set use_custom = value and not known %}
+<div class="author-field" data-author-field>
+  <select class="author-select" {% if required %}required{% endif %}
+    data-author-select
+    data-author-name="{{ name }}"
+    {% if not use_custom %}name="{{ name }}"{% endif %}>
+    <option value="">—</option>
     {% for a in authors %}
     <option value="{{ a }}" {% if value == a %}selected{% endif %}>{{ a }}</option>
     {% endfor %}
+    <option value="__custom__" {% if use_custom %}selected{% endif %}>Другой…</option>
   </select>
+  <input type="text"
+    class="author-custom {% if not use_custom %}hidden{% endif %}"
+    data-author-custom
+    {% if use_custom %}name="{{ name }}"{% endif %}
+    value="{% if use_custom %}{{ value }}{% endif %}"
+    placeholder="{{ placeholder }}"
+    autocomplete="off"
+    {% if required and use_custom %}required{% endif %}>
 </div>
-{% endmacro %}
-
-
-{% macro authors_datalist(list_id='authors-list') %}
-<datalist id="{{ list_id }}">
-  {% for a in authors %}
-  <option value="{{ a }}"></option>
-  {% endfor %}
-</datalist>
 {% endmacro %}
 
 
