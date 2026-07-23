@@ -224,12 +224,17 @@ def author_pill_class(name: str | None) -> str:
     """
     CSS-слот цвета автора: author-c0 … author-c{N-1}.
     Одно и то же имя всегда даёт один цвет; новые авторы тоже красятся.
+    Слот c0 (персиковый) закреплён за Никитой.
     """
     key = (name or "").strip().lower().replace("ё", "е")
     if not key:
+        return "c1"
+    if "karpenko" in key or "никита" in key or key.startswith("nikita"):
         return "c0"
     digest = hashlib.md5(key.encode("utf-8")).hexdigest()
-    return f"c{int(digest, 16) % AUTHOR_COLOR_SLOTS}"
+    # остальные — любой слот кроме зарезервированного c0
+    idx = 1 + (int(digest, 16) % (AUTHOR_COLOR_SLOTS - 1))
+    return f"c{idx}"
 
 
 def status_pill_class(status: str | None) -> str:
