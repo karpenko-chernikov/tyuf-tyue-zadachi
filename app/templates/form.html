@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import file_picker, attachment_list, author_field %}
+{% from "macros.html" import file_picker, attachment_list, author_field with context %}
 {% block title %}{% if task %}Редактирование{% else %}Новая задача{% endif %}{% endblock %}
 {% block content %}
 {% set f = form or {} %}

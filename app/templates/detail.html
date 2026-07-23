@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import file_picker, attachment_list, author_field %}
+{% from "macros.html" import file_picker, attachment_list, author_field with context %}
 {% block title %}{{ format_idea_title(task) }}{% endblock %}
 {% block content %}
 <div class="page-header">
