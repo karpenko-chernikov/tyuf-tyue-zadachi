@@ -251,61 +251,44 @@ const updateReviewedCount = () => {
 
 const parseImportDt = (raw) => {
   if (!raw) return null;
-  const t = Date.parse(String(raw).replace(' ', 'T'));
+  // datetime-local: 2025-06-24T17:26
+  const t = Date.parse(String(raw).trim());
   return Number.isNaN(t) ? null : t;
 };
 
-let ideaOptionsCache = null;
-const invalidateIdeaOptions = () => {
-  ideaOptionsCache = null;
-};
+/** Живые идеи с текущей страницы (ещё не в БД) — обновляем при смене типа/названия. */
+const liveIdeas = new Map();
 
-const collectIdeaOptions = () => {
-  const byValue = new Map();
-  document.querySelectorAll('[data-import-row]').forEach((row) => {
-    const kind = row.querySelector('[data-kind]')?.value;
-    if (kind !== 'idea') return;
-    const draftInput = row.querySelector('input[name^="draft_key_"]');
-    let draftKey = (draftInput?.value || '').trim();
-    const idx = row.dataset.rowIndex;
-    if (!draftKey) {
-      draftKey = `draft_${idx}`;
-      if (draftInput) draftInput.value = draftKey;
-    }
-    const num = (row.querySelector('input[name^="idea_number_"]')?.value || '').trim();
-    const title = (row.querySelector('[data-title-input]')?.value || '').trim();
-    const dt = row.querySelector('input[name^="telegram_datetime_"]')?.value || '';
-    const prefix = draftKey.startsWith('task:') ? 'Уже в базе' : 'Новая';
-    const numPart = num ? `№ ${num}` : '№ ?';
-    const titlePart = title ? ` — ${title.slice(0, 50)}` : '';
-    byValue.set(draftKey, {
-      value: draftKey,
-      label: `${prefix}: ${numPart}${titlePart}`,
-      dt,
-      isDraft: draftKey.startsWith('draft_'),
-    });
+const syncLiveIdea = (row) => {
+  const prevKey = row.dataset.liveIdeaKey;
+  if (prevKey) liveIdeas.delete(prevKey);
+  delete row.dataset.liveIdeaKey;
+
+  const kind = row.querySelector('[data-kind]')?.value;
+  if (kind !== 'idea') return;
+
+  const draftInput = row.querySelector('input[name^="draft_key_"]');
+  let key = (draftInput?.value || '').trim();
+  if (!key) {
+    key = `draft_${row.dataset.rowIndex}`;
+    if (draftInput) draftInput.value = key;
+  }
+  const num = (row.querySelector('input[name^="idea_number_"]')?.value || '').trim();
+  const title = (row.querySelector('[data-title-input]')?.value || '').trim();
+  const dt = (row.querySelector('input[name^="telegram_datetime_"]')?.value || '').trim();
+  const prefix = key.startsWith('task:') ? 'Уже в базе' : 'Новая';
+  const numPart = num ? `№ ${num}` : '№ ?';
+  const titlePart = title ? ` — ${title.slice(0, 60)}` : '';
+  row.dataset.liveIdeaKey = key;
+  liveIdeas.set(key, {
+    value: key,
+    label: `${prefix}: ${numPart}${titlePart}`,
+    dt,
   });
-  (existingLinks || []).forEach((opt) => {
-    if (!opt?.value || byValue.has(opt.value)) return;
-    byValue.set(opt.value, {
-      value: opt.value,
-      label: `В базе: ${opt.label}`,
-      dt: opt.dt || '',
-      isDraft: false,
-    });
-  });
-  return [...byValue.values()];
 };
 
-const getIdeaOptions = () => {
-  // всегда свежий снимок: кэш только внутри одного открытия select
-  if (!ideaOptionsCache) ideaOptionsCache = collectIdeaOptions();
-  return ideaOptionsCache;
-};
-
-const sortByTimeRelative = (options, rowDt) => {
+const sortOptionsForRow = (options, rowDt) => {
   const ref = parseImportDt(rowDt);
-  if (ref == null) return options.slice();
   const before = [];
   const after = [];
   const other = [];
@@ -315,29 +298,48 @@ const sortByTimeRelative = (options, rowDt) => {
       other.push(o);
       return;
     }
+    if (ref == null) {
+      other.push(o);
+      return;
+    }
     if (t <= ref) before.push(o);
     else after.push(o);
   });
+  // ближайшая до → более старые; затем ближайшая после → более новые
   before.sort((a, b) => parseImportDt(b.dt) - parseImportDt(a.dt));
   after.sort((a, b) => parseImportDt(a.dt) - parseImportDt(b.dt));
+  if (ref == null) {
+    return options.slice().sort((a, b) => {
+      const ta = parseImportDt(a.dt) || 0;
+      const tb = parseImportDt(b.dt) || 0;
+      return ta - tb;
+    });
+  }
   return [...before, ...after, ...other];
 };
 
-const sortOptionsForRow = (options, rowDt) => {
-  // сначала несохранённые идеи с этой страницы, потом уже лежащие в базе
-  const drafts = options.filter((o) => o.isDraft);
-  const rest = options.filter((o) => !o.isDraft);
-  return [...sortByTimeRelative(drafts, rowDt), ...sortByTimeRelative(rest, rowDt)];
+const buildLinkOptions = (rowDt) => {
+  const byValue = new Map();
+  liveIdeas.forEach((o, key) => {
+    byValue.set(key, o);
+  });
+  (existingLinks || []).forEach((opt) => {
+    if (!opt?.value || byValue.has(opt.value)) return;
+    byValue.set(opt.value, {
+      value: opt.value,
+      label: `В базе: ${opt.label}`,
+      dt: opt.dt || '',
+    });
+  });
+  return sortOptionsForRow([...byValue.values()], rowDt);
 };
 
-/** Пересобираем только один select — при открытии, не на каждый ввод. */
 const refreshLinkSelect = (sel) => {
   if (!sel) return;
-  invalidateIdeaOptions();
   const row = sel.closest('[data-import-row]');
-  const rowDt = row?.querySelector('input[name^="telegram_datetime_"]')?.value || '';
+  const rowDt = (row?.querySelector('input[name^="telegram_datetime_"]')?.value || '').trim();
   const current = sel.value;
-  const sorted = sortOptionsForRow(getIdeaOptions(), rowDt);
+  const sorted = buildLinkOptions(rowDt);
   const frag = document.createDocumentFragment();
   const empty = document.createElement('option');
   empty.value = '';
@@ -398,32 +400,22 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
       }
     }
     if (titleInput) titleInput.required = kind === 'idea' && isReviewed;
-    if (kind === 'idea') {
-      const draftInput = row.querySelector('input[name^="draft_key_"]');
-      if (draftInput && !(draftInput.value || '').trim()) {
-        draftInput.value = `draft_${row.dataset.rowIndex}`;
-      }
-    }
+    syncLiveIdea(row);
   };
-  kindSel.addEventListener('change', () => {
-    sync();
-    invalidateIdeaOptions();
-  });
+  kindSel.addEventListener('change', sync);
   reviewed?.addEventListener('change', () => {
     sync();
     updateReviewedCount();
   });
-  // не пересобираем списки на каждую букву — только сбрасываем кэш
-  titleInput?.addEventListener('input', invalidateIdeaOptions);
-  ideaNumberInput?.addEventListener('input', invalidateIdeaOptions);
-  dtInput?.addEventListener('change', invalidateIdeaOptions);
+  titleInput?.addEventListener('input', () => syncLiveIdea(row));
+  ideaNumberInput?.addEventListener('input', () => syncLiveIdea(row));
+  dtInput?.addEventListener('change', () => syncLiveIdea(row));
   sync();
 });
 
 document.querySelectorAll('[data-link-to]').forEach((sel) => {
-  const prepare = () => refreshLinkSelect(sel);
-  sel.addEventListener('focus', prepare);
-  sel.addEventListener('mousedown', prepare);
+  // только focus: mousedown+replaceChildren ломает открытие списка в части браузеров
+  sel.addEventListener('focus', () => refreshLinkSelect(sel));
 });
 
 updateReviewedCount();
