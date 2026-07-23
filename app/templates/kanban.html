@@ -33,7 +33,9 @@
           <div class="kanban-card-num">{{ format_idea_label(task) }}</div>
           <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
           <div class="kanban-card-meta">
-            {% if task.author %}<span>{{ task.author }}</span>{% endif %}
+            {% if task.author %}
+            <span class="author-pill author-{{ author_pill_class(task.author) }}">{{ task.author }}</span>
+            {% endif %}
             <span>{{ task.telegram_datetime.strftime('%d.%m.%Y') }}</span>
           </div>
           {% set ig = format_igraetsya(task) %}

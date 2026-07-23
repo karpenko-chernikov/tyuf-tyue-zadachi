@@ -29,7 +29,11 @@
   <div><span class="label">Назначение</span>{{ naznachenie_labels.get(task.naznachenie or '', '—') }}</div>
   <div><span class="label">Статус</span>{{ status_labels.get(task.status, task.status) }}</div>
   <div><span class="label">Дата в Telegram</span>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</div>
-  <div><span class="label">Автор</span>{{ task.author or '—' }}</div>
+  <div><span class="label">Автор</span>
+    {% if task.author %}
+    <span class="author-pill author-{{ author_pill_class(task.author) }}">{{ task.author }}</span>
+    {% else %}—{% endif %}
+  </div>
   <div><span class="label">Проверена</span>{{ proverena_labels.get(task.proverena or '', '—') }}</div>
   {% set ig = format_igraetsya(task) %}
   {% if ig %}<div class="full"><span class="label">Играется</span>{{ ig }}</div>{% endif %}
@@ -81,7 +85,7 @@
     {% for c in task.comments %}
     <div class="comment">
       <div class="comment-meta">
-        <strong>{{ c.author }}</strong>
+        <span class="author-pill author-{{ author_pill_class(c.author) }}">{{ c.author }}</span>
         · {{ c.created_at.strftime('%d.%m.%Y %H:%M') }}
         <form method="post" action="/tasks/{{ task.id }}/comments/{{ c.id }}/delete" class="comment-delete"
               onsubmit="return confirm('Удалить этот комментарий?')">

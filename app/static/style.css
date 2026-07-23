@@ -323,26 +323,42 @@ a:hover { text-decoration: underline; }
 .status-archived { background: #e74c3c; color: #fff; }
 .status-other { background: #eef0ef; color: var(--muted); }
 
-/* Авторы — овалы в одной палитре, без кислотности */
+/* Авторы — у каждого свой цвет */
 .author-pill.author-nikita {
   background: #f3d2b0;
   color: #7a3d12;
   box-shadow: inset 0 0 0 1px rgba(122, 61, 18, 0.12);
 }
+.author-pill.author-golomolzin,
 .author-pill.author-artem {
   background: #c5d9eb;
   color: #1f4a6a;
   box-shadow: inset 0 0 0 1px rgba(31, 74, 106, 0.12);
+}
+.author-pill.author-barat {
+  background: #c8e6df;
+  color: #1a5c4e;
+  box-shadow: inset 0 0 0 1px rgba(26, 92, 78, 0.12);
+}
+.author-pill.author-mirkin {
+  background: #f5e0a8;
+  color: #6b4e0b;
+  box-shadow: inset 0 0 0 1px rgba(107, 78, 11, 0.14);
 }
 .author-pill.author-ilya {
   background: #d7c4e8;
   color: #4a2f66;
   box-shadow: inset 0 0 0 1px rgba(74, 47, 102, 0.12);
 }
+.author-pill.author-bulykin {
+  background: #f0c9c4;
+  color: #7a2e28;
+  box-shadow: inset 0 0 0 1px rgba(122, 46, 40, 0.12);
+}
 .author-pill.author-other {
-  background: #d5e4db;
-  color: #2a4a3a;
-  box-shadow: inset 0 0 0 1px rgba(42, 74, 58, 0.1);
+  background: #dce0e4;
+  color: #3a4550;
+  box-shadow: inset 0 0 0 1px rgba(58, 69, 80, 0.1);
 }
 
 @media (max-width: 768px) {
@@ -698,8 +714,16 @@ textarea { resize: vertical; }
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
   font-size: 12px;
   color: var(--muted);
+}
+.kanban-card-meta .author-pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kanban-card-archive {
   margin-top: 8px;

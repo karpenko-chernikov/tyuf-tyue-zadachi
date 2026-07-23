@@ -217,14 +217,31 @@ def attach_idea_occurrences(db, tasks) -> None:
 
 
 def author_pill_class(name: str | None) -> str:
-    """CSS-класс цветного овала для автора."""
+    """CSS-класс цветного овала для автора (у каждого свой цвет)."""
     key = (name or "").strip().lower().replace("ё", "е")
-    mapping = {
-        "никита": "nikita",
-        "артем": "artem",
-        "илья": "ilya",
-    }
-    return mapping.get(key, "other")
+    if not key:
+        return "other"
+    # Сначала уникальные куски имени, чтобы «Артем Барат» ≠ «Артем Голомолзин»
+    rules = (
+        ("karpenko", "nikita"),
+        ("никита", "nikita"),
+        ("голомолзин", "golomolzin"),
+        ("барат", "barat"),
+        ("миркин", "mirkin"),
+        ("булыкин", "bulykin"),
+        ("bulykin", "bulykin"),
+        ("ilya", "ilya"),
+        ("илья", "ilya"),
+        ("nikita", "nikita"),
+    )
+    for needle, slug in rules:
+        if needle in key:
+            return slug
+    if key in ("артем", "artem"):
+        return "golomolzin"
+    if key.startswith("сергей"):
+        return "bulykin"
+    return "other"
 
 
 def status_pill_class(status: str | None) -> str:
