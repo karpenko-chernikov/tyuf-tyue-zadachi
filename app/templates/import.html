@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Импорт из Telegram{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Импорт из Telegram</h1>
+  <a href="/" class="btn secondary">← К списку</a>
+</div>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+{% if success %}<div class="alert success">{{ success }}</div>{% endif %}
+
+<section class="card">
+  <h2>1. Экспорт чата</h2>
+  <p class="muted">
+    Telegram Desktop → меню чата → Export chat history → формат <strong>JSON</strong>.
+    Загрузите <code>result.json</code> или вставьте его содержимое ниже.
+  </p>
+  <form method="post" action="/import" enctype="multipart/form-data" class="import-upload">
+    <label>Файл result.json
+      <input type="file" name="export_file" accept=".json,application/json">
+    </label>
+    <label>Или JSON текстом
+      <textarea name="paste" rows="8" placeholder='{"messages":[...]}'></textarea>
+    </label>
+    <button type="submit" class="btn primary">Разобрать</button>
+  </form>
+</section>
+
+{% if rows %}
+<section class="card import-review">
+  <h2>2. Проверка перед сохранением</h2>
+  <p class="muted">
+    Парсер предлагает тип и привязку. Пересланные сообщения чаще помечаются как комментарии
+    к предыдущей идее — поправьте вручную. «Только по смыслу» обычно остаются в «пропустить».
+  </p>
+
+  <form method="post" action="/import/commit" id="import-commit-form">
+    <input type="hidden" name="row_count" value="{{ rows|length }}">
+    <div class="import-toolbar">
+      <button type="submit" class="btn primary">Сохранить выбранное</button>
+      <button type="button" class="btn secondary" id="import-check-ideas">Только идеи</button>
+      <button type="button" class="btn secondary" id="import-check-none">Снять всё</button>
+      <span class="muted">Строк: {{ rows|length }}</span>
+    </div>
+
+    {% for r in rows %}
+    {% set i = loop.index0 %}
+    <article class="import-row kind-{{ r.kind }} conf-{{ r.confidence }}" data-import-row>
+      <div class="import-row-head">
+        <label class="checkbox-label import-save">
+          <input type="checkbox" name="save_{{ i }}" value="1" {% if r.save %}checked{% endif %} data-save>
+          Сохранить
+        </label>
+        <label>Тип
+          <select name="kind_{{ i }}" data-kind>
+            <option value="idea" {% if r.kind == 'idea' %}selected{% endif %}>Идея</option>
+            <option value="comment" {% if r.kind == 'comment' %}selected{% endif %}>Комментарий</option>
+            <option value="skip" {% if r.kind == 'skip' %}selected{% endif %}>Пропустить</option>
+          </select>
+        </label>
+        <span class="import-badge">{{ r.confidence }}</span>
+        {% if r.telegram_datetime %}
+        <span class="muted">{{ r.telegram_datetime.replace('T', ' ') }}</span>
+        {% endif %}
+        {% if r.forwarded_from %}
+        <span class="import-fwd">переслано: {{ r.forwarded_from }}</span>
+        {% endif %}
+      </div>
+
+      {% if r.notes %}
+      <ul class="import-notes">
+        {% for n in r.notes %}<li>{{ n }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+
+      <input type="hidden" name="draft_key_{{ i }}" value="{{ r.draft_key or '' }}">
+
+      <div class="grid-2">
+        <label>Автор
+          <input type="text" name="author_{{ i }}" value="{{ r.author or '' }}">
+        </label>
+        <label>Дата в Telegram
+          <input type="datetime-local" name="telegram_datetime_{{ i }}" value="{{ r.telegram_datetime or '' }}">
+        </label>
+      </div>
+
+      <div data-panel-idea {% if r.kind != 'idea' %}class="hidden"{% endif %}>
+        <div class="grid-2">
+          <label>Номер идеи
+            <input type="number" name="idea_number_{{ i }}" value="{% if r.idea_number is not none %}{{ r.idea_number }}{% endif %}">
+          </label>
+          <label>Назначение
+            <select name="naznachenie_{{ i }}">
+              {% for val, lab in naznachenie_labels.items() %}
+              <option value="{{ val }}" {% if (r.naznachenie or default_naznachenie) == val %}selected{% endif %}>{{ lab }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label>Название
+          <input type="text" name="title_{{ i }}" value="{{ r.title or '' }}">
+        </label>
+        <label>Условие
+          <textarea name="condition_{{ i }}" rows="4">{{ r.condition or r.text or '' }}</textarea>
+        </label>
+        <label>Ссылки
+          <textarea name="sources_{{ i }}" rows="2">{{ r.sources or '' }}</textarea>
+        </label>
+      </div>
+
+      <div data-panel-comment {% if r.kind != 'comment' %}class="hidden"{% endif %}>
+        <label>К идее
+          <select name="link_to_{{ i }}">
+            <option value="">— выберите —</option>
+            {% for idea in rows if idea.draft_key %}
+            <option value="{{ idea.draft_key }}" {% if r.link_to == idea.draft_key %}selected{% endif %}>
+              Новая: № {% if idea.idea_number is not none %}{{ idea.idea_number }}{% else %}?{% endif %}{% if idea.title %} — {{ idea.title[:50] }}{% endif %}
+            </option>
+            {% endfor %}
+            {% for opt in existing_links %}
+            <option value="{{ opt.value }}" {% if r.link_to == opt.value %}selected{% endif %}>В базе: {{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Текст комментария
+          <textarea name="text_{{ i }}" rows="3">{{ r.text or '' }}</textarea>
+        </label>
+      </div>
+
+      <div data-panel-skip {% if r.kind != 'skip' %}class="hidden"{% endif %}>
+        <pre class="import-raw">{{ r.text or '(пусто)' }}</pre>
+        <input type="hidden" name="text_{{ i }}" value="" disabled data-skip-text>
+      </div>
+    </article>
+    {% endfor %}
+
+    <div class="import-toolbar sticky-bottom">
+      <button type="submit" class="btn primary">Сохранить выбранное</button>
+    </div>
+  </form>
+</section>
+
+<script>
+document.querySelectorAll('[data-import-row]').forEach((row) => {
+  const kindSel = row.querySelector('[data-kind]');
+  const textArea = row.querySelector('textarea[name^="text_"]');
+  const skipHidden = row.querySelector('[data-skip-text]');
+  const sync = () => {
+    const kind = kindSel.value;
+    row.querySelector('[data-panel-idea]').classList.toggle('hidden', kind !== 'idea');
+    row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment');
+    row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
+    if (textArea) textArea.disabled = kind !== 'comment';
+    if (skipHidden) skipHidden.disabled = true;
+  };
+  kindSel.addEventListener('change', sync);
+  sync();
+});
+
+document.getElementById('import-check-none')?.addEventListener('click', () => {
+  document.querySelectorAll('[data-save]').forEach((c) => { c.checked = false; });
+});
+document.getElementById('import-check-ideas')?.addEventListener('click', () => {
+  document.querySelectorAll('[data-import-row]').forEach((row) => {
+    const kind = row.querySelector('[data-kind]').value;
+    const box = row.querySelector('[data-save]');
+    if (box) box.checked = kind === 'idea';
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

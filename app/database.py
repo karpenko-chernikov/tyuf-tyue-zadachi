@@ -1,4 +1,6 @@
 import os
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,8 +12,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+BACKUP_DIR = DATA_DIR / "backups"
+DB_PATH = DATA_DIR / "zadachi.db"
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'zadachi.db'}")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
@@ -20,6 +24,25 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+
+def backup_sqlite_db(keep: int = 20) -> Path | None:
+    """Копия локальной SQLite перед работой — чтобы git/сбой не съели данные."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return None
+    if not DB_PATH.is_file() or DB_PATH.stat().st_size == 0:
+        return None
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = BACKUP_DIR / f"zadachi-{stamp}.db"
+    shutil.copy2(DB_PATH, dest)
+    backups = sorted(BACKUP_DIR.glob("zadachi-*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in backups[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return dest
 
 
 def get_db():

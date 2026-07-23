@@ -8,13 +8,14 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from sqlalchemy import inspect, text
 
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, backup_sqlite_db, engine
 from app.auth import ensure_users
 from app.models import Task
 from app.routes import router
 
 load_dotenv()
 
+backup_sqlite_db()
 Base.metadata.create_all(bind=engine)
 
 

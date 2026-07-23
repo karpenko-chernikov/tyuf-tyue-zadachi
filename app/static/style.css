@@ -968,3 +968,66 @@ textarea { resize: vertical; }
   .file-chip-actions { width: 100%; margin-left: 0; }
   .file-chip-actions .btn { flex: 1; text-align: center; }
 }
+
+/* Импорт из Telegram */
+.import-upload label { display: block; margin-bottom: 12px; }
+.import-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0 16px;
+}
+.import-toolbar.sticky-bottom {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0;
+  background: linear-gradient(transparent, var(--surface) 30%);
+  z-index: 2;
+}
+.import-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--surface);
+}
+.import-row.kind-idea { border-left: 4px solid var(--brand); }
+.import-row.kind-comment { border-left: 4px solid #3b6ea5; }
+.import-row.kind-skip { border-left: 4px solid #b0b0b0; opacity: 0.92; }
+.import-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.import-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: #eef1ef;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.import-fwd {
+  font-size: 13px;
+  color: #3b6ea5;
+}
+.import-notes {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-raw {
+  white-space: pre-wrap;
+  background: #f4f6f5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  max-height: 160px;
+  overflow: auto;
+}

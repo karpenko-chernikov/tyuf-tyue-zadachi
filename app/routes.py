@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import change_password, login_required
-from app.database import get_db
+from app.database import backup_sqlite_db, get_db
 from app.enums import (
     AUTHORS,
     BOARD_STATUSES,
@@ -41,6 +41,7 @@ from app.history import (
     snapshot_task,
 )
 from app.models import Attachment, Comment, Task
+from app.tg_import import parse_telegram_export
 from app.utils import (
     attach_idea_occurrences,
     author_pill_class,
@@ -1232,6 +1233,261 @@ def delete_task(request: Request, task_id: int, db: Session = Depends(get_db)):
         db.delete(task)
         db.commit()
     return RedirectResponse("/", status_code=303)
+
+
+def _existing_tasks_by_minute(db: Session) -> dict[str, tuple[int, str]]:
+    tasks = db.query(Task).order_by(Task.telegram_datetime.asc(), Task.id.asc()).all()
+    attach_idea_occurrences(db, tasks)
+    out: dict[str, tuple[int, str]] = {}
+    for task in tasks:
+        if not task.telegram_datetime:
+            continue
+        key = _telegram_dt_minute(task.telegram_datetime).strftime("%Y-%m-%dT%H:%M")
+        out[key] = (task.id, format_idea_label(task))
+    return out
+
+
+def _import_existing_link_options(db: Session) -> list[dict]:
+    tasks = db.query(Task).order_by(Task.idea_number.asc().nullslast(), Task.id.asc()).all()
+    attach_idea_occurrences(db, tasks)
+    options = []
+    for task in tasks:
+        title = (task.title or "").strip()
+        label = format_idea_label(task)
+        if title:
+            label = f"{label} — {title[:60]}"
+        options.append({"value": f"task:{task.id}", "label": label})
+    return options
+
+
+@router.get("/import", response_class=HTMLResponse)
+def import_page(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "import.html",
+        {
+            "user": user,
+            "rows": None,
+            "error": None,
+            "success": None,
+            "naznachenie_labels": NAZNACHENIE_LABELS,
+            "existing_links": _import_existing_link_options(db),
+            "default_task_author": DEFAULT_TASK_AUTHOR,
+            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
+            "default_naznachenie": DEFAULT_NAZNACHENIE,
+        },
+    )
+
+
+@router.post("/import", response_class=HTMLResponse)
+async def import_parse(
+    request: Request,
+    db: Session = Depends(get_db),
+    paste: str = Form(""),
+):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    error = None
+    rows = None
+    try:
+        form = await request.form()
+        upload = form.get("export_file")
+        payload: str | bytes | None = None
+        filename = getattr(upload, "filename", None) if upload is not None else None
+        if filename and callable(getattr(upload, "read", None)):
+            payload = await upload.read()
+        if not payload and paste.strip():
+            payload = paste.strip()
+        if not payload:
+            raise ValueError("Загрузите result.json или вставьте JSON экспорта")
+        rows = parse_telegram_export(
+            payload,
+            existing_by_minute=_existing_tasks_by_minute(db),
+        )
+        if not rows:
+            raise ValueError("В экспорте не найдено сообщений с текстом")
+    except Exception as e:
+        error = str(e)
+
+    return templates.TemplateResponse(
+        request,
+        "import.html",
+        {
+            "user": user,
+            "rows": [r.to_dict() for r in rows] if rows else None,
+            "error": error,
+            "success": None,
+            "naznachenie_labels": NAZNACHENIE_LABELS,
+            "existing_links": _import_existing_link_options(db),
+            "default_task_author": DEFAULT_TASK_AUTHOR,
+            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
+            "default_naznachenie": DEFAULT_NAZNACHENIE,
+        },
+        status_code=400 if error else 200,
+    )
+
+
+@router.post("/import/commit")
+async def import_commit(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    form = await request.form()
+    try:
+        row_count = int(form.get("row_count") or 0)
+    except (TypeError, ValueError):
+        row_count = 0
+    if row_count <= 0:
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            {
+                "user": user,
+                "rows": None,
+                "error": "Нечего сохранять — сначала загрузите экспорт",
+                "success": None,
+                "naznachenie_labels": NAZNACHENIE_LABELS,
+                "existing_links": _import_existing_link_options(db),
+                "default_task_author": DEFAULT_TASK_AUTHOR,
+                "default_comment_author": DEFAULT_COMMENT_AUTHOR,
+                "default_naznachenie": DEFAULT_NAZNACHENIE,
+            },
+            status_code=400,
+        )
+
+    backup_sqlite_db()
+
+    created_tasks = 0
+    created_comments = 0
+    skipped = 0
+    draft_to_task: dict[str, int] = {}
+    errors: list[str] = []
+
+    for i in range(row_count):
+        kind = (form.get(f"kind_{i}") or "skip").strip()
+        save = form.get(f"save_{i}") == "1"
+        if not save:
+            skipped += 1
+            continue
+        if kind != "idea":
+            continue
+        draft_key = (form.get(f"draft_key_{i}") or "").strip() or f"draft_{i}"
+        author = (form.get(f"author_{i}") or "").strip() or DEFAULT_TASK_AUTHOR
+        tg_raw = (form.get(f"telegram_datetime_{i}") or "").strip()
+        title = (form.get(f"title_{i}") or "").strip() or None
+        condition = (form.get(f"condition_{i}") or "").strip()
+        sources = (form.get(f"sources_{i}") or "").strip() or None
+        naznachenie = (form.get(f"naznachenie_{i}") or "").strip() or DEFAULT_NAZNACHENIE
+        idea_number_raw = (form.get(f"idea_number_{i}") or "").strip()
+        idea_number = int(idea_number_raw) if idea_number_raw.isdigit() else None
+
+        if not condition:
+            errors.append(f"Строка {i + 1}: у идеи нет условия — пропущена")
+            continue
+        tg_dt = parse_datetime_local(tg_raw)
+        if not tg_dt:
+            errors.append(f"Строка {i + 1}: некорректная дата Telegram — пропущена")
+            continue
+        tg_dt = _telegram_dt_minute(tg_dt)
+        other = _task_with_telegram_datetime(db, tg_dt)
+        if other:
+            attach_idea_occurrences(db, [other])
+            errors.append(
+                f"Строка {i + 1}: дата {tg_raw} уже занята задачей {format_idea_label(other)} — пропущена"
+            )
+            continue
+
+        video_url = None
+        has_video = False
+        if sources:
+            for u in sources.splitlines():
+                u = u.strip()
+                if any(x in u.lower() for x in ("youtube", "youtu.be", "instagram")):
+                    video_url = u
+                    has_video = True
+                    break
+
+        task = Task(
+            idea_number=idea_number,
+            title=title,
+            condition=condition,
+            author=author,
+            naznachenie=naznachenie,
+            status=Status.TG.value,
+            has_video=has_video,
+            archived=False,
+            video_url=video_url,
+            sources=sources,
+            telegram_datetime=tg_dt,
+        )
+        db.add(task)
+        db.flush()
+        record_created(db, task, user)
+        draft_to_task[draft_key] = task.id
+        created_tasks += 1
+
+    for i in range(row_count):
+        kind = (form.get(f"kind_{i}") or "skip").strip()
+        save = form.get(f"save_{i}") == "1"
+        if not save or kind != "comment":
+            continue
+        text = (form.get(f"text_{i}") or "").strip()
+        author = (form.get(f"author_{i}") or "").strip() or DEFAULT_COMMENT_AUTHOR
+        link_to = (form.get(f"link_to_{i}") or "").strip()
+        if not text:
+            errors.append(f"Строка {i + 1}: пустой комментарий — пропущен")
+            continue
+        task_id: int | None = None
+        if link_to.startswith("task:"):
+            try:
+                task_id = int(link_to.split(":", 1)[1])
+            except ValueError:
+                task_id = None
+        elif link_to.startswith("draft_"):
+            task_id = draft_to_task.get(link_to)
+        if not task_id or not db.get(Task, task_id):
+            errors.append(f"Строка {i + 1}: комментарий без привязки к идее — пропущен")
+            continue
+        comment = Comment(task_id=task_id, text=text, author=author)
+        db.add(comment)
+        db.flush()
+        record_comment_added(db, task_id, user, author, text)
+        created_comments += 1
+
+    db.commit()
+
+    parts = [
+        f"Создано задач: {created_tasks}",
+        f"комментариев: {created_comments}",
+        f"пропущено строк: {skipped}",
+    ]
+    success = ". ".join(parts) + "."
+    if errors:
+        success += " Замечания: " + "; ".join(errors[:12])
+        if len(errors) > 12:
+            success += f" … ещё {len(errors) - 12}"
+
+    return templates.TemplateResponse(
+        request,
+        "import.html",
+        {
+            "user": user,
+            "rows": None,
+            "error": None,
+            "success": success,
+            "naznachenie_labels": NAZNACHENIE_LABELS,
+            "existing_links": _import_existing_link_options(db),
+            "default_task_author": DEFAULT_TASK_AUTHOR,
+            "default_comment_author": DEFAULT_COMMENT_AUTHOR,
+            "default_naznachenie": DEFAULT_NAZNACHENIE,
+        },
+    )
 
 
 @router.get("/export/txt")

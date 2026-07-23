@@ -8,6 +8,8 @@ venv/
 .env
 
 # База задач хранится в git (data/zadachi.db)
+# локальные автобэкапы — не в git
+data/backups/
 # временные файлы sqlite
 data/*.db-journal
 data/*.db-wal
