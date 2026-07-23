@@ -27,6 +27,7 @@ from app.enums import (
     STATUS_SHORT_LABELS,
     Status,
     TURNIR_LABELS,
+    normalize_author,
 )
 from app.export import export_tasks_csv, export_tasks_txt
 from app.files import format_size, is_image_attachment, save_local_files, save_uploads
@@ -1467,7 +1468,10 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         if kind != "idea":
             continue
         draft_key = (form.get(f"draft_key_{i}") or "").strip() or f"draft_{i}"
-        author = (form.get(f"author_{i}") or "").strip() or DEFAULT_TASK_AUTHOR
+        author = normalize_author(
+            (form.get(f"author_{i}") or "").strip(),
+            default=DEFAULT_TASK_AUTHOR,
+        )
         tg_raw = (form.get(f"telegram_datetime_{i}") or "").strip()
         title = (form.get(f"title_{i}") or "").strip() or None
         condition = (form.get(f"condition_{i}") or "").strip()
@@ -1538,7 +1542,10 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         if not save or kind not in ("comment", "media"):
             continue
         text = (form.get(f"text_{i}") or "").strip()
-        author = (form.get(f"author_{i}") or "").strip() or DEFAULT_COMMENT_AUTHOR
+        author = normalize_author(
+            (form.get(f"author_{i}") or "").strip(),
+            default=DEFAULT_COMMENT_AUTHOR,
+        )
         link_to = (form.get(f"link_to_{i}") or "").strip()
         media_paths = _media_paths_from_form(form, i)
         task_id = _resolve_link_to_task_id(link_to, draft_to_task, db)

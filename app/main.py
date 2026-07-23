@@ -95,6 +95,46 @@ def _migrate_archived_status():
 _migrate_archived_status()
 
 
+def _migrate_author_names():
+    """Короткие имена авторов → канонические (как в Telegram)."""
+    from app.enums import AUTHOR_ALIASES
+    from app.models import Comment, Task
+
+    db = SessionLocal()
+    try:
+        mapping = {}
+        for alias, canonical in AUTHOR_ALIASES.items():
+            # только точные короткие ключи без пробелов или известные старые
+            mapping[alias] = canonical
+        # явные старые значения в БД
+        explicit = {
+            "Никита": "Nikita Karpenko-Chernikov",
+            "Артём": "Артем Голомолзин",
+            "Артем": "Артем Голомолзин",
+            "Илья": "Ilya",
+            "Сергей Б": "Сергей Булыкин",
+        }
+        changed = 0
+        for old, new in explicit.items():
+            changed += (
+                db.query(Task)
+                .filter(Task.author == old)
+                .update({Task.author: new}, synchronize_session=False)
+            )
+            changed += (
+                db.query(Comment)
+                .filter(Comment.author == old)
+                .update({Comment.author: new}, synchronize_session=False)
+            )
+        if changed:
+            db.commit()
+    finally:
+        db.close()
+
+
+_migrate_author_names()
+
+
 def _seed_users():
     db = SessionLocal()
     try:

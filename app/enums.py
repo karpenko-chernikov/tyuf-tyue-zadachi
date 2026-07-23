@@ -110,7 +110,43 @@ BOARD_STATUSES = {
     ],
 }
 
-AUTHORS = ["Никита", "Артём", "Илья"]
-DEFAULT_COMMENT_AUTHOR = "Илья"
-DEFAULT_TASK_AUTHOR = "Никита"
+AUTHORS = [
+    "Nikita Karpenko-Chernikov",
+    "Артем Голомолзин",
+    "Ilya",
+    "Сергей Булыкин",
+]
+DEFAULT_COMMENT_AUTHOR = "Ilya"
+DEFAULT_TASK_AUTHOR = "Nikita Karpenko-Chernikov"
 DEFAULT_NAZNACHENIE = Naznachenie.BOTH.value
+
+# Короткие имена и варианты из Telegram → каноническое имя в базе
+AUTHOR_ALIASES = {
+    "никита": "Nikita Karpenko-Chernikov",
+    "nikita": "Nikita Karpenko-Chernikov",
+    "nikita karpenko-chernikov": "Nikita Karpenko-Chernikov",
+    "артём": "Артем Голомолзин",
+    "артем": "Артем Голомолзин",
+    "артем голомолзин": "Артем Голомолзин",
+    "артём голомолзин": "Артем Голомолзин",
+    "илья": "Ilya",
+    "ilya": "Ilya",
+    "сергей б": "Сергей Булыкин",
+    "сергей булыкин": "Сергей Булыкин",
+    "sergey bulykin": "Сергей Булыкин",
+}
+
+
+def normalize_author(name: str | None, *, default: str | None = None) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        return default or DEFAULT_TASK_AUTHOR
+    key = raw.lower().replace("ё", "е")
+    if key in AUTHOR_ALIASES:
+        return AUTHOR_ALIASES[key]
+    # префикс «Nikita Karpenko…»
+    for alias, canonical in AUTHOR_ALIASES.items():
+        if key.startswith(alias) or alias.startswith(key):
+            if len(key) >= 4:
+                return canonical
+    return raw

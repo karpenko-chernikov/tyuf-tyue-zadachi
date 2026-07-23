@@ -47,10 +47,15 @@
 {% if rows %}
 <section class="card import-review">
   <h2>2. Проверка перед сохранением</h2>
-  <p class="muted">
-    Тип <strong>медиа</strong> — файлы к задаче без комментария.
-    Пересланные → комментарии. Проверьте привязки и снимите лишнее.
-  </p>
+  <div class="import-help">
+    <p><strong>Как работать</strong></p>
+    <ul>
+      <li>Лишнее сообщение → тип <strong>Пропустить</strong> (галочку «Сохранить» ставить не нужно — она снимется сама).</li>
+      <li>Нужная идея → тип <strong>Идея</strong> + галочка <strong>Сохранить</strong>.</li>
+      <li>Комментарий → тип <strong>Комментарий</strong>, в поле <strong>К идее</strong> выберите задачу (новую из этого списка или уже из базы), галочка <strong>Сохранить</strong>.</li>
+      <li>Можно сохранить только часть строк, выключить ноут, потом снова нажать «Разобрать»: уже сохранённые по дате Telegram сами станут «пропустить».</li>
+    </ul>
+  </div>
 
   <form method="post" action="/import/commit" id="import-commit-form">
     <input type="hidden" name="row_count" value="{{ rows|length }}">
@@ -67,7 +72,7 @@
     <article class="import-row kind-{{ r.kind }} conf-{{ r.confidence }}" data-import-row>
       <div class="import-row-head">
         <label class="checkbox-label import-save">
-          <input type="checkbox" name="save_{{ i }}" value="1" {% if r.save %}checked{% endif %} data-save>
+          <input type="checkbox" name="save_{{ i }}" value="1" {% if r.save and r.kind != 'skip' %}checked{% endif %} data-save>
           Сохранить
         </label>
         <label>Тип
@@ -175,6 +180,7 @@
 <script>
 document.querySelectorAll('[data-import-row]').forEach((row) => {
   const kindSel = row.querySelector('[data-kind]');
+  const saveBox = row.querySelector('[data-save]');
   const textArea = row.querySelector('textarea[name^="text_"]');
   const sync = () => {
     const kind = kindSel.value;
@@ -182,8 +188,17 @@ document.querySelectorAll('[data-import-row]').forEach((row) => {
     row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment' && kind !== 'media');
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
+    if (kind === 'skip') {
+      if (saveBox) saveBox.checked = false;
+    }
   };
-  kindSel.addEventListener('change', sync);
+  kindSel.addEventListener('change', () => {
+    if (kindSel.value !== 'skip' && saveBox && !saveBox.checked) {
+      // при смене с «пропустить» на полезный тип — предложить сохранить
+      saveBox.checked = true;
+    }
+    sync();
+  });
   sync();
 });
 

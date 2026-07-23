@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.enums import DEFAULT_COMMENT_AUTHOR, DEFAULT_NAZNACHENIE, DEFAULT_TASK_AUTHOR
+from app.enums import DEFAULT_COMMENT_AUTHOR, DEFAULT_NAZNACHENIE, DEFAULT_TASK_AUTHOR, normalize_author
 from app.utils import IDEA_RE, parse_paste
 
 # Упоминание идеи в комментарии без заголовка новой идеи
@@ -350,7 +350,7 @@ def classify_messages(
 
     for i, item in enumerate(provisional):
         text = item["text"]
-        author = item["author"] or DEFAULT_TASK_AUTHOR
+        author = normalize_author(item["author"], default=DEFAULT_TASK_AUTHOR)
         dt_local = item["dt_local"]
         media_paths = item["media_paths"]
         notes: list[str] = []
@@ -412,6 +412,7 @@ def classify_messages(
         confidence = "low"
         kind = "skip"
         save = False
+        author = normalize_author(item["author"], default=DEFAULT_COMMENT_AUTHOR)
 
         if media_only and not is_forward and not reply_to_idea and not mentions:
             # фото/видео без текста → к предыдущей идее как вложение задачи
