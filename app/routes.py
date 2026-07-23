@@ -1461,8 +1461,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
 
     for i in range(row_count):
         kind = (form.get(f"kind_{i}") or "skip").strip()
-        save = form.get(f"save_{i}") == "1"
-        if not save:
+        if kind == "skip":
             skipped += 1
             continue
         if kind != "idea":
@@ -1538,8 +1537,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
 
     for i in range(row_count):
         kind = (form.get(f"kind_{i}") or "skip").strip()
-        save = form.get(f"save_{i}") == "1"
-        if not save or kind not in ("comment", "media"):
+        if kind == "skip" or kind not in ("comment", "media"):
             continue
         text = (form.get(f"text_{i}") or "").strip()
         author = normalize_author(

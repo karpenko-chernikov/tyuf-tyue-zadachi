@@ -48,12 +48,12 @@
 <section class="card import-review">
   <h2>2. Проверка перед сохранением</h2>
   <div class="import-help">
-    <p><strong>Как работать</strong></p>
+    <p><strong>Как работать</strong> — решает только поле <em>Тип</em>:</p>
     <ul>
-      <li>Лишнее сообщение → тип <strong>Пропустить</strong> (галочку «Сохранить» ставить не нужно — она снимется сама).</li>
-      <li>Нужная идея → тип <strong>Идея</strong> + галочка <strong>Сохранить</strong>.</li>
-      <li>Комментарий → тип <strong>Комментарий</strong>, в поле <strong>К идее</strong> выберите задачу (новую из этого списка или уже из базы), галочка <strong>Сохранить</strong>.</li>
-      <li>Можно сохранить только часть строк, выключить ноут, потом снова нажать «Разобрать»: уже сохранённые по дате Telegram сами станут «пропустить».</li>
+      <li><strong>Пропустить</strong> — сообщение в базу не попадёт.</li>
+      <li><strong>Идея</strong> / <strong>Комментарий</strong> / <strong>Медиа</strong> — попадёт при нажатии кнопки внизу.</li>
+      <li>У комментария в «К идее» выберите задачу.</li>
+      <li>Можно обработать часть (остальное оставить «Пропустить»), сохранить, потом снова «Разобрать» и продолжить.</li>
     </ul>
   </div>
 
@@ -61,9 +61,9 @@
     <input type="hidden" name="row_count" value="{{ rows|length }}">
     <input type="hidden" name="export_root" value="{{ export_root or '' }}">
     <div class="import-toolbar">
-      <button type="submit" class="btn primary">Сохранить выбранное</button>
-      <button type="button" class="btn secondary" id="import-check-ideas">Только идеи</button>
-      <button type="button" class="btn secondary" id="import-check-none">Снять всё</button>
+      <button type="submit" class="btn primary">Сохранить в базу</button>
+      <button type="button" class="btn secondary" id="import-only-ideas">Оставить только идеи</button>
+      <button type="button" class="btn secondary" id="import-all-skip">Всё в «Пропустить»</button>
       <span class="muted">Строк: {{ rows|length }} · чат: {{ chat_name or '—' }}</span>
     </div>
 
@@ -71,10 +71,6 @@
     {% set i = loop.index0 %}
     <article class="import-row kind-{{ r.kind }} conf-{{ r.confidence }}" data-import-row>
       <div class="import-row-head">
-        <label class="checkbox-label import-save">
-          <input type="checkbox" name="save_{{ i }}" value="1" {% if r.save and r.kind != 'skip' %}checked{% endif %} data-save>
-          Сохранить
-        </label>
         <label>Тип
           <select name="kind_{{ i }}" data-kind>
             <option value="idea" {% if r.kind == 'idea' %}selected{% endif %}>Идея</option>
@@ -172,7 +168,7 @@
     {% endfor %}
 
     <div class="import-toolbar sticky-bottom">
-      <button type="submit" class="btn primary">Сохранить выбранное</button>
+      <button type="submit" class="btn primary">Сохранить в базу</button>
     </div>
   </form>
 </section>
@@ -180,36 +176,33 @@
 <script>
 document.querySelectorAll('[data-import-row]').forEach((row) => {
   const kindSel = row.querySelector('[data-kind]');
-  const saveBox = row.querySelector('[data-save]');
   const textArea = row.querySelector('textarea[name^="text_"]');
   const sync = () => {
     const kind = kindSel.value;
+    row.classList.remove('kind-idea', 'kind-comment', 'kind-media', 'kind-skip');
+    row.classList.add('kind-' + kind);
     row.querySelector('[data-panel-idea]').classList.toggle('hidden', kind !== 'idea');
     row.querySelector('[data-panel-comment]').classList.toggle('hidden', kind !== 'comment' && kind !== 'media');
     row.querySelector('[data-panel-skip]').classList.toggle('hidden', kind !== 'skip');
     if (textArea) textArea.disabled = kind !== 'comment';
-    if (kind === 'skip') {
-      if (saveBox) saveBox.checked = false;
-    }
   };
-  kindSel.addEventListener('change', () => {
-    if (kindSel.value !== 'skip' && saveBox && !saveBox.checked) {
-      // при смене с «пропустить» на полезный тип — предложить сохранить
-      saveBox.checked = true;
-    }
-    sync();
-  });
+  kindSel.addEventListener('change', sync);
   sync();
 });
 
-document.getElementById('import-check-none')?.addEventListener('click', () => {
-  document.querySelectorAll('[data-save]').forEach((c) => { c.checked = false; });
+document.getElementById('import-all-skip')?.addEventListener('click', () => {
+  document.querySelectorAll('[data-kind]').forEach((sel) => {
+    sel.value = 'skip';
+    sel.dispatchEvent(new Event('change'));
+  });
 });
-document.getElementById('import-check-ideas')?.addEventListener('click', () => {
+document.getElementById('import-only-ideas')?.addEventListener('click', () => {
   document.querySelectorAll('[data-import-row]').forEach((row) => {
-    const kind = row.querySelector('[data-kind]').value;
-    const box = row.querySelector('[data-save]');
-    if (box) box.checked = kind === 'idea';
+    const sel = row.querySelector('[data-kind]');
+    if (sel.value !== 'idea') {
+      sel.value = 'skip';
+      sel.dispatchEvent(new Event('change'));
+    }
   });
 });
 </script>
