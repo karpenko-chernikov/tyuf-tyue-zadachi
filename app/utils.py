@@ -74,12 +74,30 @@ def _looks_like_title(line: str) -> bool:
     return True
 
 
+def _strip_field_label(line: str, *labels: str) -> str:
+    raw = (line or "").strip()
+    lower = raw.lower().replace("ё", "е")
+    for label in labels:
+        lab = label.lower().replace("ё", "е")
+        if lower.startswith(lab):
+            rest = raw[len(label) :].lstrip(" \t.:-—–")
+            return rest or raw
+    return raw
+
+
 def _split_paste_body(text: str) -> tuple[str | None, str | None]:
     """После заголовка «Идея N» отделяет название и условие."""
     if not text or not str(text).strip():
         return None, None
 
     lines = [ln.strip() for ln in str(text).strip().splitlines()]
+    # Пропускаем хвост до строки с номером идеи (напр. отдельная строка «Идея:»)
+    start = 0
+    for i, ln in enumerate(lines):
+        if ln and IDEA_RE.search(ln):
+            start = i
+            break
+    lines = lines[start:]
     while lines and not lines[0]:
         lines.pop(0)
     if not lines:
@@ -89,7 +107,7 @@ def _split_paste_body(text: str) -> tuple[str | None, str | None]:
     body_lines: list[str]
 
     first = lines[0]
-    idea_match = IDEA_RE.match(first)
+    idea_match = IDEA_RE.search(first)
     if idea_match:
         after = first[idea_match.end() :].strip(" \t.:-—–")
         rest = lines[1:]
@@ -97,7 +115,6 @@ def _split_paste_body(text: str) -> tuple[str | None, str | None]:
             title = after
             body_lines = rest
         elif after:
-            # «Идея 12 — длинный текст условия…» в одной строке
             body_lines = [after, *rest]
         else:
             body_lines = rest
@@ -108,18 +125,19 @@ def _split_paste_body(text: str) -> tuple[str | None, str | None]:
         body_lines.pop(0)
 
     if title is None and body_lines:
-        candidate = body_lines[0]
+        candidate = _strip_field_label(body_lines[0], "Название", "Title")
         more = body_lines[1:]
-        # Есть ещё текст после короткой строки → это название
         if _looks_like_title(candidate) and any(ln.strip() for ln in more):
             title = candidate
             body_lines = more
             while body_lines and not body_lines[0]:
                 body_lines.pop(0)
         elif _looks_like_title(candidate) and not any(ln.strip() for ln in more):
-            # Только короткая строка — считаем названием
             title = candidate
             body_lines = []
+
+    if body_lines:
+        body_lines[0] = _strip_field_label(body_lines[0], "Условие", "Condition")
 
     condition = "\n".join(body_lines).strip() or None
     return title, condition

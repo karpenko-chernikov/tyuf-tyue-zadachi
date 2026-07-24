@@ -146,6 +146,29 @@ class ImportProcessedMessage(Base):
     processed_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TgInboxProcessed(Base):
+    """Сообщения, уже обработанные входящим ботом (личка)."""
+
+    __tablename__ = "tg_inbox_processed"
+
+    chat_id = Column(String(40), primary_key=True)
+    message_id = Column(Integer, primary_key=True)
+    kind = Column(String(20), nullable=True)
+    processed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TgPending(Base):
+    """Превью идеи/комментария в личке бота, ждёт подтверждения."""
+
+    __tablename__ = "tg_pending"
+
+    user_tg_id = Column(String(40), primary_key=True)
+    kind = Column(String(20), nullable=False)  # idea | comment
+    payload_json = Column(Text, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class TaskHistory(Base):
     """Кто и что менял в задаче: до / после."""
 

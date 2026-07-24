@@ -30,6 +30,10 @@ def tg_configured() -> bool:
     return bool(_token() and _chat_id())
 
 
+def tg_token_configured() -> bool:
+    return bool(_token())
+
+
 def _reload_env() -> None:
     """Подхватить изменения .env без рестарта uvicorn."""
     from dotenv import load_dotenv
@@ -216,19 +220,27 @@ def _send_new_task_message(task_id: int, saved_by: str) -> None:
         db.close()
 
 
-def send_message(*, text: str) -> bool:
-    if not tg_configured():
+def send_message(
+    *,
+    text: str,
+    chat_id: str | None = None,
+    reply_markup: dict | None = None,
+) -> bool:
+    if not _token():
         return False
+    target = (chat_id or _chat_id()).strip()
+    if not target:
+        return False
+    payload: dict = {
+        "chat_id": target,
+        "text": text[:TG_MESSAGE_LIMIT],
+        "disable_web_page_preview": True,
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
         with httpx.Client(timeout=30.0) as client:
-            r = client.post(
-                _api_url("sendMessage"),
-                json={
-                    "chat_id": _chat_id(),
-                    "text": text[:TG_MESSAGE_LIMIT],
-                    "disable_web_page_preview": True,
-                },
-            )
+            r = client.post(_api_url("sendMessage"), json=payload)
         if r.status_code >= 400:
             logger.error("Telegram sendMessage %s: %s", r.status_code, r.text[:500])
             return False
@@ -236,6 +248,91 @@ def send_message(*, text: str) -> bool:
     except Exception:
         logger.exception("Telegram sendMessage failed")
         return False
+
+
+def answer_callback_query(callback_query_id: str, *, text: str = "") -> bool:
+    if not _token() or not callback_query_id:
+        return False
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            r = client.post(
+                _api_url("answerCallbackQuery"),
+                json={"callback_query_id": callback_query_id, "text": text[:200]},
+            )
+        return r.status_code < 400
+    except Exception:
+        logger.exception("Telegram answerCallbackQuery failed")
+        return False
+
+
+def get_updates(*, offset: int | None = None, timeout: int = 25) -> list[dict]:
+    if not _token():
+        return []
+    params: dict = {"timeout": timeout, "allowed_updates": json.dumps(["message", "callback_query"])}
+    if offset is not None:
+        params["offset"] = offset
+    try:
+        with httpx.Client(timeout=timeout + 10.0) as client:
+            r = client.get(_api_url("getUpdates"), params=params)
+        if r.status_code >= 400:
+            logger.error("Telegram getUpdates %s: %s", r.status_code, r.text[:500])
+            return []
+        data = r.json()
+        if not data.get("ok"):
+            return []
+        return list(data.get("result") or [])
+    except Exception:
+        logger.exception("Telegram getUpdates failed")
+        return []
+
+
+def get_me() -> dict | None:
+    if not _token():
+        return None
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            r = client.get(_api_url("getMe"))
+        data = r.json()
+        if data.get("ok"):
+            return data.get("result")
+    except Exception:
+        logger.exception("Telegram getMe failed")
+    return None
+
+
+def delete_webhook() -> None:
+    """Long polling не работает при активном webhook."""
+    if not _token():
+        return
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            client.post(_api_url("deleteWebhook"), json={"drop_pending_updates": False})
+    except Exception:
+        logger.exception("Telegram deleteWebhook failed")
+
+
+def download_telegram_file(file_id: str) -> tuple[str, bytes] | None:
+    """Возвращает (filename, bytes) или None."""
+    if not _token() or not file_id:
+        return None
+    try:
+        with httpx.Client(timeout=180.0) as client:
+            r = client.get(_api_url("getFile"), params={"file_id": file_id})
+            data = r.json()
+            if not data.get("ok"):
+                return None
+            file_path = (data.get("result") or {}).get("file_path") or ""
+            if not file_path:
+                return None
+            url = f"https://api.telegram.org/file/bot{_token()}/{file_path}"
+            fr = client.get(url)
+            if fr.status_code >= 400:
+                return None
+            name = Path(file_path).name or "file"
+            return name, fr.content
+    except Exception:
+        logger.exception("Telegram download file failed")
+        return None
 
 
 def send_photo_bytes(filename: str, data: bytes, *, caption: str = "") -> bool:
@@ -388,23 +485,42 @@ def _scheduler_loop(stop: threading.Event) -> None:
             break
 
 
+_inbox_stop: threading.Event | None = None
+_inbox_thread: threading.Thread | None = None
+
+
 def start_telegram_scheduler() -> None:
-    global _scheduler_stop, _scheduler_thread
-    if _scheduler_thread and _scheduler_thread.is_alive():
-        return
-    _scheduler_stop = threading.Event()
-    _scheduler_thread = threading.Thread(
-        target=_scheduler_loop,
-        args=(_scheduler_stop,),
-        daemon=True,
-        name="tg-monthly-backup",
-    )
-    _scheduler_thread.start()
+    global _scheduler_stop, _scheduler_thread, _inbox_stop, _inbox_thread
+    if not (_scheduler_thread and _scheduler_thread.is_alive()):
+        _scheduler_stop = threading.Event()
+        _scheduler_thread = threading.Thread(
+            target=_scheduler_loop,
+            args=(_scheduler_stop,),
+            daemon=True,
+            name="tg-monthly-backup",
+        )
+        _scheduler_thread.start()
+    if tg_token_configured() and not (_inbox_thread and _inbox_thread.is_alive()):
+        from app.telegram_inbox import inbox_poll_loop
+
+        _inbox_stop = threading.Event()
+        _inbox_thread = threading.Thread(
+            target=inbox_poll_loop,
+            args=(_inbox_stop,),
+            daemon=True,
+            name="tg-inbox-poll",
+        )
+        _inbox_thread.start()
+        logger.info("Telegram inbox poller started")
 
 
 def stop_telegram_scheduler() -> None:
-    global _scheduler_stop, _scheduler_thread
+    global _scheduler_stop, _scheduler_thread, _inbox_stop, _inbox_thread
     if _scheduler_stop:
         _scheduler_stop.set()
+    if _inbox_stop:
+        _inbox_stop.set()
     _scheduler_thread = None
     _scheduler_stop = None
+    _inbox_thread = None
+    _inbox_stop = None

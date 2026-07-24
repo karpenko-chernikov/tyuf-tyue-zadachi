@@ -55,11 +55,12 @@
 <section class="card">
   <h2>Telegram</h2>
   {% if tg_configured %}
-  <p class="muted">Бот настроен: уведомления о новых задачах и раз в месяц TXT-экспорт всех задач (день {{ tg_monthly_day }}). Полный файл БД в Telegram не шлётся — слишком большой из‑за медиа.</p>
+  <p class="muted">Бот настроен: уведомления о новых задачах в рабочий чат; раз в месяц TXT-экспорт (день {{ tg_monthly_day }}). Полный файл БД в Telegram не шлётся.</p>
+  <p class="muted">Бот в две стороны: задача на сайте → чат идей; идея в чате → превью в личке → «Сохранить». Краткая инструкция: <code>docs/telegram-bot.md</code>. Нужны /start у бота и Privacy Disable в BotFather.</p>
   {% if app_base_url %}
-  <p class="muted">Ссылки в уведомлениях: <code>{{ app_base_url }}</code></p>
+  <p class="muted">Ссылки: <code>{{ app_base_url }}</code></p>
   {% else %}
-  <p class="muted">Ссылка на задачу в уведомлениях пока без адреса — задайте <code>APP_BASE_URL</code> в <code>.env</code> (публичный URL сайта, без слэша в конце). Для проверки локально можно <code>http://127.0.0.1:8000</code>, но коллеги по чату его не откроют.</p>
+  <p class="muted">Ссылка на задачу пока без адреса — задайте <code>APP_BASE_URL</code> в <code>.env</code> (публичный URL без слэша в конце).</p>
   {% endif %}
   <div class="actions-inline">
     <form method="post" action="/settings/telegram/test">

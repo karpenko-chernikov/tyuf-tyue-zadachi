@@ -93,6 +93,34 @@ def save_local_files(
     return saved
 
 
+def save_bytes_attachment(
+    db,
+    *,
+    task_id: int,
+    comment_id: int | None,
+    filename: str,
+    data: bytes,
+    content_type: str | None,
+    uploaded_by: str,
+    max_bytes: int = MAX_IMPORT_BYTES,
+) -> Attachment | None:
+    """Сохраняет уже скачанные байты как вложение."""
+    if not data or len(data) > max_bytes:
+        return None
+    name = safe_filename(filename or "file")
+    att = Attachment(
+        task_id=task_id,
+        comment_id=comment_id,
+        filename=name,
+        content_type=content_type or guess_content_type(name),
+        size=len(data),
+        data=data,
+        uploaded_by=uploaded_by,
+    )
+    db.add(att)
+    return att
+
+
 async def save_uploads(
     db,
     *,
