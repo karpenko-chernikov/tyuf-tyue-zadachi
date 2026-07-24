@@ -54,6 +54,7 @@ DEFAULT_USERS = (
     ("artem", "Артём", "PASS_ARTEM"),
     ("ilya", "Илья", "PASS_ILYA"),
     ("anton", "Антон", "PASS_ANTON"),
+    ("sergey", "Сергей", "PASS_SERGEY"),
 )
 
 
