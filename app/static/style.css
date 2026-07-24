@@ -330,12 +330,23 @@ a:hover { text-decoration: underline; }
 .author-pill.author-c16 { background: #af7ac5; color: #2c0f3d; } /* сирень */
 .author-pill.author-c17 { background: #2c3e50; color: #ffffff; } /* графит — Булыкин */
 
-/* Назначение — спокойные оттенки бренда */
+/* Теги */
 .board-chip { background: #e8f0ec; color: #3d5c50; }
-.board-tyue { background: #d7e8f6; color: #245578; }
-.board-both { background: #d6eee4; color: #176850; }
-.board-kapitany { background: #e8dff3; color: #553a70; }
-.board-none { background: #eef0ef; color: var(--muted); }
+.tag-tyuf { background: #d6eee4; color: #176850; }
+.tag-tyue { background: #d7e8f6; color: #245578; }
+.tag-kapitanka { background: #e8dff3; color: #553a70; }
+.tag-sf4 { background: #fff3cd; color: #6b5200; }
+.tag-sf3 { background: #ffe8cc; color: #6b3d00; }
+.tag-invent_yourself { background: #fde2e8; color: #6b2040; }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-checkboxes { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; }
+.tag-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: 500; }
+.tag-check input { margin: 0; }
+.tag-admin-list { list-style: none; padding: 0; margin: 0 0 16px; }
+.tag-admin-list li { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.tag-create-form { display: grid; gap: 10px; max-width: 420px; }
+.checkbox-inline { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.checkbox-inline input { margin: 0; }
 
 /* Статусы */
 .status-pill { font-weight: 600; }

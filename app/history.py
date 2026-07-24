@@ -5,12 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.enums import (
     ETAP_LABELS,
-    NAZNACHENIE_LABELS,
     PROVERENA_LABELS,
     STATUS_LABELS,
     TURNIR_LABELS,
 )
 from app.models import Task, TaskHistory
+from app.tags import task_tag_names
 
 FIELD_LABELS = {
     "idea_number": "Номер идеи",
@@ -19,7 +19,7 @@ FIELD_LABELS = {
     "formulirovka": "Формулировка перед отправлением",
     "itogovaya_formulirovka": "Итоговая формулировка",
     "author": "Автор",
-    "naznachenie": "Назначение",
+    "tags": "Теги",
     "status": "Статус",
     "proverena": "Проверена своими руками",
     "archived": "Архив",
@@ -45,6 +45,8 @@ ACTION_LABELS = {
 
 
 def _raw_value(task: Task, field: str):
+    if field == "tags":
+        return task_tag_names(task)
     value = getattr(task, field, None)
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d %H:%M")
@@ -62,8 +64,6 @@ def format_value(field: str, value) -> str:
         return "—"
     if field == "archived":
         return "Да — больше не предлагаем" if value else "Нет"
-    if field == "naznachenie":
-        return NAZNACHENIE_LABELS.get(value, str(value))
     if field == "status":
         return STATUS_LABELS.get(value, str(value))
     if field == "proverena":
@@ -104,7 +104,7 @@ def _add_entry(
         task_id=task_id,
         user=user,
         action=action,
-        summary=(summary or "").strip() or None,
+        summary=summary,
         changes_json=json.dumps(changes, ensure_ascii=False) if changes else None,
     )
     db.add(entry)
@@ -129,9 +129,11 @@ def record_created(db: Session, task: Task, user: str) -> None:
 
 
 def record_update(db: Session, task: Task, user: str, before: dict) -> None:
-    changes = diff_snapshots(before, snapshot_task(task))
-    if changes:
-        _add_entry(db, task.id, user, "updated", changes=changes)
+    after = snapshot_task(task)
+    changes = diff_snapshots(before, after)
+    if not changes:
+        return
+    _add_entry(db, task.id, user, "updated", changes=changes)
 
 
 def record_comment_added(db: Session, task_id: int, user: str, author: str, text: str) -> None:
@@ -176,15 +178,15 @@ def record_file_deleted(db: Session, task_id: int, user: str, filename: str) -> 
     _add_entry(db, task_id, user, "file_deleted", summary=filename)
 
 
+def action_label(action: str) -> str:
+    return ACTION_LABELS.get(action, action)
+
+
 def parse_changes(entry: TaskHistory) -> list[dict]:
     if not entry.changes_json:
         return []
     try:
         data = json.loads(entry.changes_json)
-        return data if isinstance(data, list) else []
     except json.JSONDecodeError:
         return []
-
-
-def action_label(action: str) -> str:
-    return ACTION_LABELS.get(action, action)
+    return data if isinstance(data, list) else []

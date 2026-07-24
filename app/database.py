@@ -56,8 +56,14 @@ def backup_sqlite_db(keep: int = 20) -> Path | None:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = BACKUP_DIR / f"zadachi-{stamp}.db"
     shutil.copy2(DB_PATH, dest)
-    backups = sorted(BACKUP_DIR.glob("zadachi-*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for old in backups[keep:]:
+    existing = []
+    for p in BACKUP_DIR.glob("zadachi-*.db"):
+        try:
+            existing.append((p.stat().st_mtime, p))
+        except OSError:
+            continue
+    existing.sort(key=lambda item: item[0], reverse=True)
+    for _, old in existing[keep:]:
         try:
             old.unlink()
         except OSError:

@@ -9,7 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.enums import DEFAULT_COMMENT_AUTHOR, DEFAULT_NAZNACHENIE, DEFAULT_TASK_AUTHOR, normalize_author
+from app.enums import DEFAULT_COMMENT_AUTHOR, DEFAULT_TASK_AUTHOR, normalize_author
+from app.tags import DEFAULT_TAG_SLUGS
 from app.utils import IDEA_RE, extract_urls, parse_paste
 
 # Упоминание идеи в комментарии без заголовка новой идеи
@@ -46,7 +47,7 @@ class ImportRow:
     idea_number: int | None = None
     title: str | None = None
     condition: str | None = None
-    naznachenie: str = DEFAULT_NAZNACHENIE
+    tag_slugs: list[str] = field(default_factory=lambda: list(DEFAULT_TAG_SLUGS))
     sources: str | None = None
     video_url: str | None = None
     # комментарий / media → draft_N или task:ID
@@ -410,18 +411,52 @@ def read_local_export_json(export_dir: Path) -> tuple[str, Path]:
     raise FileNotFoundError(f"В {export_dir} нет result.json")
 
 
+def _norm_import_title(value: str | None) -> str:
+    text = (value or "").strip().lower().replace("ё", "е")
+    return re.sub(r"\s+", " ", text)
+
+
+def _import_titles_match(a: str | None, b: str | None) -> bool:
+    na, nb = _norm_import_title(a), _norm_import_title(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    if len(na) >= 8 and len(nb) >= 8 and (na in nb or nb in na):
+        return True
+    return False
+
+
+def _task_matches_idea(
+    *,
+    task_title: str | None,
+    task_idea_number: int | None,
+    idea_title: str | None,
+    idea_number: int | None,
+) -> bool:
+    if idea_number is not None and task_idea_number is not None and idea_number == task_idea_number:
+        return True
+    return _import_titles_match(task_title, idea_title)
+
+
 def classify_messages(
     messages: list[dict],
     *,
-    existing_by_minute: dict[str, tuple[int, str]] | None = None,
+    existing_by_minute: dict[str, list[tuple[int, str, str | None, int | None]]] | None = None,
     processed_msg_ids: set[int] | None = None,
-) -> list[ImportRow]:
+    existing_comment_keys: set[tuple[str, str, str]] | None = None,
+) -> tuple[list[ImportRow], set[int]]:
     """
-    existing_by_minute: 'YYYY-MM-DDTHH:MM' -> (task_id, label)
+    existing_by_minute: 'YYYY-MM-DDTHH:MM' -> [(task_id, label, title, idea_number), ...]
     processed_msg_ids: уже разобранные msg id — не показываем снова
+    existing_comment_keys: (минута, автор, текст) комментариев уже в БД
+
+    Возвращает (строки импорта, msg_id, совпавшие с уже сохранёнными задачами/комментариями).
     """
     existing_by_minute = existing_by_minute or {}
-    processed_msg_ids = processed_msg_ids or set()
+    processed_msg_ids = set(processed_msg_ids or set())
+    existing_comment_keys = existing_comment_keys or set()
+    synced_msg_ids: set[int] = set()
 
     idea_msg_ids: set[int] = set()
     provisional: list[dict] = []
@@ -454,8 +489,36 @@ def classify_messages(
             reply_to = None
 
         is_idea = _looks_like_new_idea(text)
-        # Не скрываем по дате: в одну минуту бывает несколько идей.
-        # Уже разобранные сообщения отфильтрованы через processed_msg_ids.
+        # Идея уже есть в БД (та же минута + название или номер) — не показываем
+        if is_idea and dt_local and msg_id_i is not None:
+            parsed_preview = parse_paste(text)
+            for _tid, _label, task_title, task_num in existing_by_minute.get(dt_local, []):
+                if _task_matches_idea(
+                    task_title=task_title,
+                    task_idea_number=task_num,
+                    idea_title=parsed_preview.get("title"),
+                    idea_number=parsed_preview.get("idea_number"),
+                ):
+                    synced_msg_ids.add(msg_id_i)
+                    processed_msg_ids.add(msg_id_i)
+                    break
+            if msg_id_i in processed_msg_ids:
+                continue
+
+        # Комментарий с тем же текстом уже в БД у задачи на эту минуту
+        if (
+            not is_idea
+            and msg_id_i is not None
+            and dt_local
+            and text
+            and existing_comment_keys
+        ):
+            body = re.sub(r"\s+", " ", text.strip().lower().replace("ё", "е"))[:180]
+            who = (author or "").strip().lower().replace("ё", "е")
+            if (dt_local, who, body) in existing_comment_keys:
+                synced_msg_ids.add(msg_id_i)
+                processed_msg_ids.add(msg_id_i)
+                continue
 
         if is_idea and msg_id_i is not None:
             idea_msg_ids.add(msg_id_i)
@@ -487,9 +550,14 @@ def classify_messages(
         notes: list[str] = []
         dup_id = None
         dup_label = None
-        if dt_local and dt_local in existing_by_minute:
-            dup_id, dup_label = existing_by_minute[dt_local]
-            notes.append(f"Уже в базе: {dup_label}")
+        if dt_local and existing_by_minute.get(dt_local):
+            # Подсказка, если в ту же минуту уже есть другая задача
+            others = existing_by_minute[dt_local]
+            dup_id, dup_label = others[0][0], others[0][1]
+            if len(others) == 1:
+                notes.append(f"В эту минуту уже есть задача: {dup_label}")
+            else:
+                notes.append(f"В эту минуту уже есть задачи ({len(others)}), напр. {dup_label}")
 
         urls: list[str] = list(item.get("urls") or [])
         # text_link.href часто не совпадает с видимым текстом («здесь», «eyes»)
@@ -528,7 +596,7 @@ def classify_messages(
                 idea_number=parsed.get("idea_number"),
                 title=parsed.get("title"),
                 condition=condition,
-                naznachenie=parsed.get("naznachenie") or DEFAULT_NAZNACHENIE,
+                tag_slugs=parsed.get("tag_slugs") or list(DEFAULT_TAG_SLUGS),
                 sources=sources,
                 video_url=video_url,
                 media_paths=media_paths,
@@ -649,20 +717,22 @@ def classify_messages(
         )
         rows.append(row)
 
-    return rows
+    return rows, synced_msg_ids
 
 
 def parse_telegram_export(
     payload: str | bytes | dict,
     *,
-    existing_by_minute: dict[str, tuple[int, str]] | None = None,
+    existing_by_minute: dict[str, list[tuple[int, str, str | None, int | None]]] | None = None,
     processed_msg_ids: set[int] | None = None,
+    existing_comment_keys: set[tuple[str, str, str]] | None = None,
     chat_name: str | None = None,
-) -> tuple[list[ImportRow], list[dict]]:
+) -> tuple[list[ImportRow], list[dict], set[int]]:
     messages, chats = load_export_messages(payload, chat_name=chat_name)
-    rows = classify_messages(
+    rows, synced_msg_ids = classify_messages(
         messages,
         existing_by_minute=existing_by_minute,
         processed_msg_ids=processed_msg_ids,
+        existing_comment_keys=existing_comment_keys,
     )
-    return rows, chats
+    return rows, chats, synced_msg_ids

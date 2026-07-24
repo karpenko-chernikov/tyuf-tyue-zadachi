@@ -67,19 +67,10 @@
       {{ attachment_list(task_files) }}
     </div>
 
-    <div class="grid-3">
+    <div class="grid-2">
       <label>Автор задачи *
         {% set author_val = f.author if f.author is defined else (task.author if task else default_task_author) %}
         {{ author_field('author', author_val or '', 'Имя нового автора', true) }}
-      </label>
-      <label>Назначение *
-        {% set nazn_val = f.naznachenie if f.naznachenie is defined else (task.naznachenie if task else (p.naznachenie or default_naznachenie)) %}
-        <select name="naznachenie" id="naznachenie" required>
-          <option value="">—</option>
-          {% for val, label in naznachenie_labels.items() %}
-          <option value="{{ val }}" {% if nazn_val == val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
       </label>
       <label>Статус
         {% set status_val = f.status if f.status is defined else (pending_status if pending_status else (task.status if task else 'tg')) %}
@@ -89,6 +80,28 @@
           {% endfor %}
         </select>
       </label>
+    </div>
+
+    {% if f.tag_slugs is defined %}
+      {% set selected_tags = f.tag_slugs %}
+    {% elif task %}
+      {% set selected_tags = task.tags|map(attribute='slug')|list %}
+    {% elif p.tag_slugs is defined %}
+      {% set selected_tags = p.tag_slugs %}
+    {% else %}
+      {% set selected_tags = default_tag_slugs %}
+    {% endif %}
+    <div class="field-block">
+      <div class="field-label">Теги *</div>
+      <div class="tag-checkboxes" id="tag-checkboxes">
+        {% for t in all_tags %}
+        <label class="tag-check">
+          <input type="checkbox" name="tag_slugs" value="{{ t.slug }}" data-tag-slug="{{ t.slug }}"
+            {% if t.slug in selected_tags %}checked{% endif %}>
+          <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
     </div>
 
     <label>Проверена своими руками
@@ -124,7 +137,7 @@
         <textarea name="itogovaya_formulirovka" rows="6" id="itogovaya-input"
           {% if status_val == 'igraetsya' %}required{% endif %}>{% if f.itogovaya_formulirovka is defined %}{{ f.itogovaya_formulirovka }}{% elif task %}{{ task.itogovaya_formulirovka or '' }}{% endif %}</textarea>
       </label>
-      <div id="igraetsya-regular" class="grid-3 {% if nazn_val == 'kapitany' %}hidden{% endif %}">
+      <div id="igraetsya-regular" class="grid-3 {% if 'kapitanka' in selected_tags %}hidden{% endif %}">
         {% set turnir_val = f.turnir if f.turnir is defined else (task.turnir if task else '') %}
         <label>Турнир *
           <select name="turnir" id="turnir-select">
@@ -143,7 +156,7 @@
             value="{% if f.task_number is defined %}{{ f.task_number }}{% elif task and task.task_number %}{{ task.task_number }}{% endif %}">
         </label>
       </div>
-      <div id="igraetsya-kk" class="grid-2 {% if nazn_val != 'kapitany' %}hidden{% endif %}">
+      <div id="igraetsya-kk" class="grid-2 {% if 'kapitanka' not in selected_tags %}hidden{% endif %}">
         {% set etap_val = f.etap_kk if f.etap_kk is defined else (task.etap_kk if task else '') %}
         <label>Этап *
           <select name="etap_kk">
@@ -197,7 +210,6 @@
 </section>
 
 <script>
-const nazn = document.getElementById('naznachenie');
 const status = document.getElementById('status');
 const formulirovkaFields = document.getElementById('formulirovka-fields');
 const formulirovkaInput = document.getElementById('formulirovka-input');
@@ -206,8 +218,13 @@ const igraetsyaRegular = document.getElementById('igraetsya-regular');
 const igraetsyaKk = document.getElementById('igraetsya-kk');
 const itogovayaInput = document.getElementById('itogovaya-input');
 
+function isKapitankaChecked() {
+  const box = document.querySelector('input[name="tag_slugs"][value="kapitanka"]');
+  return !!(box && box.checked);
+}
+
 function syncFields() {
-  const isKk = nazn.value === 'kapitany';
+  const isKk = isKapitankaChecked();
   const st = status.value;
   const showForm = st === 'formulirovka' || st === 'metodkom' || st === 'igraetsya';
   const showIgra = st === 'igraetsya';
@@ -220,7 +237,6 @@ function syncFields() {
   igraetsyaKk.classList.toggle('hidden', !isKk);
   if (itogovayaInput) itogovayaInput.required = showIgra;
 
-  // Скрытые поля не должны блокировать сохранение (HTML5 required)
   igraetsyaRegular.querySelectorAll('input, select').forEach(el => {
     el.disabled = isKk || !showIgra;
     if ('required' in el) el.required = false;
@@ -231,20 +247,26 @@ function syncFields() {
   });
 }
 
-nazn.addEventListener('change', syncFields);
+document.querySelectorAll('input[name="tag_slugs"]').forEach((el) => {
+  el.addEventListener('change', syncFields);
+});
 status.addEventListener('change', syncFields);
 syncFields();
 
 const taskForm = document.getElementById('task-form');
 if (taskForm) {
   taskForm.addEventListener('submit', (e) => {
+    const checked = taskForm.querySelectorAll('input[name="tag_slugs"]:checked');
+    if (!checked.length) {
+      e.preventDefault();
+      alert('Выберите хотя бы один тег');
+      return;
+    }
     const ideaInput = taskForm.querySelector('[name="idea_number"]');
     if (ideaInput && ideaInput.value.trim()) {
-      // 8(2) / № 8 → 8 перед отправкой
       const m = ideaInput.value.trim().match(/(\d+)/);
       if (m) ideaInput.value = m[1];
     }
-    // Скрытые required не дают сохранить без понятной ошибки
     if (!taskForm.checkValidity()) {
       e.preventDefault();
       taskForm.reportValidity();

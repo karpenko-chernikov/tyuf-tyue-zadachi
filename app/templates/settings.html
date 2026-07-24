@@ -27,6 +27,33 @@
 </section>
 
 <section class="card">
+  <h2>Теги</h2>
+  <ul class="tag-admin-list">
+    {% for t in all_tags %}
+    <li>
+      <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
+      <code>{{ t.slug }}</code>
+      {% if t.has_metodkom %}<span class="muted">· методком</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <h3>Новый тег</h3>
+  <form method="post" action="/settings/tags" class="tag-create-form">
+    <label>Название
+      <input type="text" name="name" required placeholder="Например ТЮБ">
+    </label>
+    <label>Slug (необязательно)
+      <input type="text" name="slug" placeholder="tyub — латиница">
+    </label>
+    <label class="checkbox-inline">
+      <input type="checkbox" name="has_metodkom" value="1" checked>
+      Есть колонка «Методкомиссия» на канбане
+    </label>
+    <button type="submit" class="btn primary">Создать тег</button>
+  </form>
+</section>
+
+<section class="card">
   <h2>Логины</h2>
   <ul>
     <li><code>nikita</code> — Никита</li>

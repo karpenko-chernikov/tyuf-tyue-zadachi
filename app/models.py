@@ -1,9 +1,41 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Table,
+    Text,
+)
 from sqlalchemy.orm import deferred, relationship
 
 from app.database import Base
+
+task_tags = Table(
+    "task_tags",
+    Base.metadata,
+    Column("task_id", Integer, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Tag(Base):
+    """Метка доски/турнира: ТЮФ, ТЮЕ, Капитанка, SF4, …"""
+
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String(80), unique=True, nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    has_metodkom = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=100, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    tasks = relationship("Task", secondary=task_tags, back_populates="tags")
 
 
 class Task(Base):
@@ -16,12 +48,10 @@ class Task(Base):
     formulirovka = Column(Text, nullable=True)
     itogovaya_formulirovka = Column(Text, nullable=True)
     author = Column(String(100), nullable=True)
-    naznachenie = Column(String(50), nullable=True)
     status = Column(String(50), default="tg", index=True)
     proverena = Column(String(20), nullable=True)
     archived = Column(Boolean, default=False, nullable=False)
     video_url = Column(String(1000), nullable=True)
-    tags = Column(String(500), nullable=True)
     sources = Column(Text, nullable=True)
     telegram_url = Column(String(1000), nullable=True)
     telegram_datetime = Column(DateTime, nullable=False)
@@ -35,6 +65,7 @@ class Task(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    tags = relationship("Tag", secondary=task_tags, back_populates="tasks", lazy="selectin")
     comments = relationship(
         "Comment", back_populates="task", cascade="all, delete-orphan", order_by="Comment.created_at"
     )

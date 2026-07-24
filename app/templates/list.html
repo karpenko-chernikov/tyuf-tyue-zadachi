@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Список задач{% endblock %}
 {% block content %}
-{% set qs_base = 'q=' ~ (q|urlencode) ~ '&naznachenie=' ~ (naznachenie|urlencode) ~ '&status=' ~ (status_filter|urlencode) ~ '&author=' ~ (author_filter|urlencode) %}
+{% set qs_base = 'q=' ~ (q|urlencode) ~ '&tag=' ~ (tag|urlencode) ~ '&status=' ~ (status_filter|urlencode) ~ '&author=' ~ (author_filter|urlencode) %}
 {% if sort == 'tg' and order == 'asc' %}
   {% set tg_next_order = 'desc' %}
   {% set tg_arrow = '↑' %}
@@ -19,10 +19,10 @@
 
 <form class="filters" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Поиск по тексту, автору, ссылкам">
-  <select name="naznachenie">
-    <option value="">Все назначения</option>
-    {% for val, label in naznachenie_labels.items() %}
-    <option value="{{ val }}" {% if naznachenie == val %}selected{% endif %}>{{ label }}</option>
+  <select name="tag">
+    <option value="">Все теги</option>
+    {% for t in all_tags %}
+    <option value="{{ t.slug }}" {% if tag == t.slug %}selected{% endif %}>{{ t.name }}</option>
     {% endfor %}
   </select>
   <select name="status">
@@ -55,7 +55,7 @@
     <tr>
       <th>№</th>
       <th>Название</th>
-      <th>Назначение</th>
+      <th>Теги</th>
       <th>Статус</th>
       <th>
         <a class="th-sort {% if sort == 'tg' %}is-active{% endif %}"
@@ -81,9 +81,13 @@
         {% if task.status == 'archived' or task.archived %}<span class="archive-pill">Архив</span>{% endif %}
       </td>
       <td>
-        <span class="board-chip board-{{ task.naznachenie or 'none' }}">
-          {{ naznachenie_labels.get(task.naznachenie or '', '—') }}
-        </span>
+        <div class="tag-chips">
+          {% for t in task.tags|sort(attribute='sort_order') %}
+          <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
+          {% else %}
+          <span class="muted">—</span>
+          {% endfor %}
+        </div>
       </td>
       <td>
         <span class="status-pill status-{{ status_pill_class(task.status) }}">
@@ -105,7 +109,7 @@
   </tbody>
 </table>
 </div>
-<p class="muted table-count">Всего: {{ tasks|length }}</p>
+<p class="table-count muted">Всего: {{ tasks|length }}</p>
 {% else %}
 <p class="empty">Задач пока нет. <a href="/new">Добавить первую</a></p>
 {% endif %}

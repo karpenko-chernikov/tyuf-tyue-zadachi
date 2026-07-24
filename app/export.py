@@ -5,13 +5,13 @@ from datetime import datetime
 from sqlalchemy.orm import Session, selectinload
 
 from app.enums import (
-    NAZNACHENIE_LABELS,
     STATUS_LABELS,
     PROVERENA_LABELS,
     TURNIR_LABELS,
     ETAP_LABELS,
 )
 from app.models import Comment, Task
+from app.tags import task_tag_names
 from app.utils import attach_idea_occurrences, format_igraetsya, format_idea_label
 
 
@@ -41,7 +41,7 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
         lines = [
             header,
             f"Название: {task.title or '—'}",
-            f"Назначение: {NAZNACHENIE_LABELS.get(task.naznachenie or '', '—')}",
+            f"Теги: {task_tag_names(task) or '—'}",
             f"Статус: {STATUS_LABELS.get(task.status, task.status)}",
             f"Дата в Telegram: {_dt(task.telegram_datetime)}",
             f"Автор: {task.author or '—'}",
@@ -119,7 +119,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
         "Номер идеи",
         "ID",
         "Название",
-        "Назначение",
+        "Теги",
         "Статус",
         "Дата в Telegram",
         "Автор",
@@ -154,7 +154,7 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             format_idea_label(task) if task.idea_number is not None else "",
             task.id,
             task.title or "",
-            NAZNACHENIE_LABELS.get(task.naznachenie or "", ""),
+            task_tag_names(task),
             STATUS_LABELS.get(task.status, task.status),
             _dt(task.telegram_datetime),
             task.author or "",

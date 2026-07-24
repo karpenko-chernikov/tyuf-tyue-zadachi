@@ -171,13 +171,19 @@
           <label>Номер идеи
             <input type="number" name="idea_number_{{ i }}" value="{% if r.idea_number is not none %}{{ r.idea_number }}{% endif %}">
           </label>
-          <label>Назначение
-            <select name="naznachenie_{{ i }}">
-              {% for val, lab in naznachenie_labels.items() %}
-              <option value="{{ val }}" {% if (r.naznachenie or default_naznachenie) == val %}selected{% endif %}>{{ lab }}</option>
-              {% endfor %}
-            </select>
-          </label>
+        </div>
+        {% set row_tags = r.tag_slugs if r.tag_slugs else default_tag_slugs %}
+        <div class="field-block">
+          <div class="field-label">Теги</div>
+          <div class="tag-checkboxes">
+            {% for t in all_tags %}
+            <label class="tag-check">
+              <input type="checkbox" name="tag_slugs_{{ i }}" value="{{ t.slug }}"
+                {% if t.slug in row_tags %}checked{% endif %}>
+              <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
+            </label>
+            {% endfor %}
+          </div>
         </div>
         <label>Название *
           <input type="text" name="title_{{ i }}" value="{{ r.title or '' }}"

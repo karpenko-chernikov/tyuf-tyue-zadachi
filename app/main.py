@@ -12,6 +12,7 @@ from app.database import Base, SessionLocal, backup_sqlite_db, engine
 from app.auth import ensure_users
 from app.models import Task
 from app.routes import router
+from app.tags import ensure_tags, migrate_naznachenie_to_tags
 
 load_dotenv()
 
@@ -54,24 +55,6 @@ def _ensure_columns():
 _ensure_columns()
 
 
-def _migrate_tyuf_to_both():
-    """Старое назначение «только ТЮФ» больше не используем → «ТЮФ и ТЮЕ»."""
-    db = SessionLocal()
-    try:
-        updated = (
-            db.query(Task)
-            .filter(Task.naznachenie == "tyuf")
-            .update({Task.naznachenie: "both"}, synchronize_session=False)
-        )
-        if updated:
-            db.commit()
-    finally:
-        db.close()
-
-
-_migrate_tyuf_to_both()
-
-
 def _migrate_archived_status():
     """Флаг archived → статус «archived», чтобы задачи попали в колонку Архив."""
     db = SessionLocal()
@@ -102,11 +85,6 @@ def _migrate_author_names():
 
     db = SessionLocal()
     try:
-        mapping = {}
-        for alias, canonical in AUTHOR_ALIASES.items():
-            # только точные короткие ключи без пробелов или известные старые
-            mapping[alias] = canonical
-        # явные старые значения в БД
         explicit = {
             "Никита": "Nikita Karpenko-Chernikov",
             "Артём": "Артем Голомолзин",
@@ -144,6 +122,18 @@ def _seed_users():
 
 
 _seed_users()
+
+
+def _seed_and_migrate_tags():
+    db = SessionLocal()
+    try:
+        ensure_tags(db)
+        migrate_naznachenie_to_tags(db, engine)
+    finally:
+        db.close()
+
+
+_seed_and_migrate_tags()
 
 app = FastAPI(title="Задачи ТЮФ/ТЮЕ")
 app.add_middleware(

@@ -137,13 +137,20 @@ def parse_paste(text: str) -> dict:
             condition = condition.replace(url, "").strip()
         condition = re.sub(r"\n{3,}", "\n\n", condition).strip() or None
 
-    naznachenie = "kapitany" if kapitany else "both"
+    from app.tags import infer_tag_slugs_for_new_task
+
+    tag_slugs = infer_tag_slugs_for_new_task(
+        kapitany=kapitany,
+        title=title,
+        condition=condition,
+        extra_text=text,
+    )
 
     return {
         "idea_number": idea_number,
         "title": title,
         "condition": condition,
-        "naznachenie": naznachenie,
+        "tag_slugs": tag_slugs,
         "sources": "\n".join(urls) if urls else None,
         "video_url": next(
             (u for u in urls if "youtube" in u or "instagram" in u or "youtu.be" in u), None
@@ -169,10 +176,11 @@ def parse_datetime_local(value: str):
 
 def format_igraetsya(task):
     from app.enums import TURNIR_LABELS, ETAP_LABELS
+    from app.tags import task_is_kapitanka
 
     if task.status != "igraetsya":
         return None
-    if task.naznachenie == "kapitany":
+    if task_is_kapitanka(task):
         if task.turnir_year and task.etap_kk:
             return f"КК · ТЮЕ {task.turnir_year} · {ETAP_LABELS.get(task.etap_kk, task.etap_kk)}"
         return None

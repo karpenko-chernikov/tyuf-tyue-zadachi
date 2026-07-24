@@ -26,7 +26,13 @@
 
 <div class="meta-grid">
   <div><span class="label">Номер идеи</span>{{ format_idea_label(task) }}</div>
-  <div><span class="label">Назначение</span>{{ naznachenie_labels.get(task.naznachenie or '', '—') }}</div>
+  <div><span class="label">Теги</span>
+    <div class="tag-chips">
+      {% for t in task.tags|sort(attribute='sort_order') %}
+      <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
+      {% else %}—{% endfor %}
+    </div>
+  </div>
   <div><span class="label">Статус</span>{{ status_labels.get(task.status, task.status) }}</div>
   <div><span class="label">Дата в Telegram</span>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</div>
   <div><span class="label">Автор</span>

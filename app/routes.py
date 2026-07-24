@@ -15,14 +15,9 @@ from app.auth import change_password, login_required
 from app.database import backup_sqlite_db, get_db
 from app.enums import (
     AUTHORS,
-    BOARD_STATUSES,
     DEFAULT_COMMENT_AUTHOR,
-    DEFAULT_NAZNACHENIE,
     DEFAULT_TASK_AUTHOR,
     ETAP_LABELS,
-    METODKOM_ONLY_FOR,
-    NAZNACHENIE_LABELS,
-    Naznachenie,
     PROVERENA_LABELS,
     STATUS_LABELS,
     STATUS_SHORT_LABELS,
@@ -50,7 +45,16 @@ from app.history import (
     record_update,
     snapshot_task,
 )
-from app.models import Attachment, Comment, ImportProcessedMessage, Task
+from app.models import Attachment, Comment, ImportProcessedMessage, Tag, Task
+from app.tags import (
+    DEFAULT_TAG_SLUGS,
+    board_statuses_for_tag,
+    list_tags,
+    slugify_tag_name,
+    tags_by_slugs,
+    task_allows_metodkom,
+    task_is_kapitanka,
+)
 from app.tg_import import (
     find_local_export_dirs,
     parse_telegram_export,
@@ -168,7 +172,7 @@ def _author_suggestions(db: Session):
     return sorted(names, key=lambda x: x.lower())
 
 
-def _filter_tasks(db: Session, q, naznachenie, status, author=None):
+def _filter_tasks(db: Session, q, tag_slug, status, author=None):
     query = db.query(Task)
     if q:
         like = f"%{q}%"
@@ -180,13 +184,12 @@ def _filter_tasks(db: Session, q, naznachenie, status, author=None):
                 Task.author.ilike(like),
             )
         )
-    if naznachenie:
-        query = query.filter(Task.naznachenie == naznachenie)
+    if tag_slug:
+        query = query.filter(Task.tags.any(Tag.slug == tag_slug))
     if status:
         query = query.filter(Task.status == status)
     if author:
         query = query.filter(Task.author == author)
-    # Сначала № 15, потом 15(2): по номеру, затем по дате TG / id (как у суффикса)
     return query.order_by(
         Task.idea_number.asc().nullslast(),
         Task.telegram_datetime.asc().nullslast(),
@@ -207,11 +210,20 @@ def _sort_tasks_by_idea_display(tasks: list) -> list:
     )
 
 
-def _available_statuses(naznachenie):
+def _available_statuses(*, allow_metodkom: bool):
     statuses = dict(STATUS_LABELS)
-    if naznachenie not in METODKOM_ONLY_FOR:
+    if not allow_metodkom:
         statuses.pop(Status.METODKOM.value, None)
     return statuses
+
+
+def _tag_slugs_from_form(form) -> list[str]:
+    raw = form.getlist("tag_slugs") if hasattr(form, "getlist") else []
+    if not raw:
+        single = form.get("tag_slugs") if hasattr(form, "get") else None
+        if single:
+            raw = [single]
+    return [str(s).strip() for s in raw if str(s).strip()]
 
 
 def _default_telegram_datetime(db: Session) -> str | None:
@@ -266,16 +278,17 @@ def _max_idea_number(db: Session) -> int | None:
 
 
 def _form_context(db: Session, **extra):
+    all_tags = list_tags(db)
     ctx = {
         "authors": _author_suggestions(db),
-        "naznachenie_labels": NAZNACHENIE_LABELS,
+        "all_tags": all_tags,
         "proverena_labels": PROVERENA_LABELS,
         "turnir_labels": TURNIR_LABELS,
         "etap_labels": ETAP_LABELS,
         "default_telegram_datetime": _default_telegram_datetime(db),
         "default_comment_author": DEFAULT_COMMENT_AUTHOR,
         "default_task_author": DEFAULT_TASK_AUTHOR,
-        "default_naznachenie": DEFAULT_NAZNACHENIE,
+        "default_tag_slugs": list(DEFAULT_TAG_SLUGS),
         "max_idea_number": _max_idea_number(db),
         "form": None,
         "error": None,
@@ -320,21 +333,24 @@ def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
+def _settings_ctx(request: Request, db: Session, **extra):
+    ctx = {
+        "user": login_required(request),
+        "username": request.session.get("username", ""),
+        "all_tags": list_tags(db),
+        "error": None,
+        "success": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request):
+def settings_page(request: Request, db: Session = Depends(get_db)):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "user": user,
-            "username": request.session.get("username", ""),
-            "error": None,
-            "success": None,
-        },
-    )
+    return templates.TemplateResponse(request, "settings.html", _settings_ctx(request, db))
 
 
 @router.post("/settings/password")
@@ -350,12 +366,7 @@ def settings_password(
         return RedirectResponse("/login", status_code=303)
 
     username = request.session.get("username", "")
-    ctx = {
-        "user": user,
-        "username": username,
-        "error": None,
-        "success": None,
-    }
+    ctx = _settings_ctx(request, db)
 
     if new_password != new_password2:
         ctx["error"] = "Новые пароли не совпадают"
@@ -363,7 +374,7 @@ def settings_password(
 
     try:
         change_password(db, username, old_password, new_password)
-        ctx["success"] = "Пароль изменён. При следующем входе используйте новый."
+        ctx["success"] = "Пароль изменён"
     except ValueError as e:
         ctx["error"] = str(e)
         return templates.TemplateResponse(request, "settings.html", ctx, status_code=400)
@@ -371,12 +382,63 @@ def settings_password(
     return templates.TemplateResponse(request, "settings.html", ctx)
 
 
-@router.get("/kanban")
-def kanban_root(request: Request):
+@router.post("/settings/tags")
+def settings_create_tag(
+    request: Request,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    slug: str = Form(""),
+    has_metodkom: str = Form(""),
+):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    return RedirectResponse("/kanban/both", status_code=303)
+
+    display = (name or "").strip()
+    if not display:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _settings_ctx(request, db, error="Укажите название тега"),
+            status_code=400,
+        )
+
+    slug_val = (slug or "").strip().lower() or slugify_tag_name(display)
+    slug_val = slugify_tag_name(slug_val) if slug_val else slugify_tag_name(display)
+    if db.query(Tag).filter(Tag.slug == slug_val).first():
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _settings_ctx(request, db, error=f"Тег со slug «{slug_val}» уже есть"),
+            status_code=400,
+        )
+
+    max_order = db.query(func.max(Tag.sort_order)).scalar() or 0
+    db.add(
+        Tag(
+            slug=slug_val,
+            name=display,
+            has_metodkom=has_metodkom in ("1", "on", "true", "yes"),
+            sort_order=max_order + 10,
+        )
+    )
+    db.commit()
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        _settings_ctx(request, db, success=f"Тег «{display}» создан"),
+    )
+
+
+@router.get("/kanban")
+def kanban_root(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    tags = list_tags(db)
+    if not tags:
+        raise HTTPException(status_code=404, detail="Нет тегов — создайте тег в настройках")
+    return RedirectResponse(f"/kanban/{tags[0].slug}", status_code=303)
 
 
 @router.get("/kanban/{board}", response_class=HTMLResponse)
@@ -385,15 +447,16 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    if board not in BOARD_STATUSES:
+    tag = db.query(Tag).filter(Tag.slug == board).first()
+    if not tag:
         raise HTTPException(status_code=404, detail="Нет такой доски")
 
-    columns = BOARD_STATUSES[board]
+    columns = board_statuses_for_tag(tag)
     allowed = {s.value for s in columns}
 
     tasks = (
         db.query(Task)
-        .filter(Task.naznachenie == board)
+        .filter(Task.tags.any(Tag.slug == board))
         .order_by(
             Task.idea_number.asc().nullslast(),
             Task.telegram_datetime.asc().nullslast(),
@@ -406,18 +469,18 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
 
     tasks_by_status = {s.value: [] for s in columns}
     for task in tasks:
-        # если у задачи «странный» статус (например методкомиссия на ТЮЕ) — в первую колонку
         key = task.status if task.status in allowed else columns[0].value
         tasks_by_status[key].append(task)
 
+    boards = {t.slug: t.name for t in list_tags(db)}
     return templates.TemplateResponse(
         request,
         "kanban.html",
         {
             "user": user,
             "board": board,
-            "board_label": NAZNACHENIE_LABELS[board],
-            "boards": NAZNACHENIE_LABELS,
+            "board_label": tag.name,
+            "boards": boards,
             "columns": columns,
             "tasks_by_status": tasks_by_status,
             "status_short": STATUS_SHORT_LABELS,
@@ -446,15 +509,11 @@ def api_set_status(
     if status not in STATUS_LABELS:
         raise HTTPException(status_code=400, detail="Неизвестный статус")
 
-    if status == Status.METODKOM.value and task.naznachenie not in METODKOM_ONLY_FOR:
+    if status == Status.METODKOM.value and not task_allows_metodkom(task):
         raise HTTPException(
             status_code=400,
-            detail="Статус «Методкомиссия» только для доски «ТЮФ и ТЮЕ»",
+            detail="Статус «Методкомиссия» недоступен для тегов этой задачи",
         )
-
-    allowed = BOARD_STATUSES.get(task.naznachenie or "")
-    if allowed and status not in {s.value for s in allowed}:
-        raise HTTPException(status_code=400, detail="Этот статус недоступен для данной задачи")
 
     # Для «формулировка» / «играется» статус меняем только если поля уже заполнены.
     # Иначе открываем форму — без сохранения статус не меняется (Отмена = остаётся как было).
@@ -464,7 +523,7 @@ def api_set_status(
     elif status == Status.IGRAETSYA.value:
         if not (task.itogovaya_formulirovka or "").strip():
             needs_edit = True
-        elif task.naznachenie == Naznachenie.KAPITANY.value:
+        elif task_is_kapitanka(task):
             if not task.etap_kk or not task.turnir_year:
                 needs_edit = True
         elif not task.turnir or not task.turnir_year or not task.task_number:
@@ -514,7 +573,7 @@ def task_list(
     request: Request,
     db: Session = Depends(get_db),
     q: str = Query(None),
-    naznachenie: str = Query(None),
+    tag: str = Query(None),
     status: str = Query(None),
     author: str = Query(None),
     sort: str = Query(None),
@@ -525,7 +584,7 @@ def task_list(
         return RedirectResponse("/login", status_code=303)
 
     author_filter = (author or "").strip() or None
-    query = _filter_tasks(db, q, naznachenie, status, author_filter)
+    query = _filter_tasks(db, q, tag, status, author_filter)
     sort_key = (sort or "").strip().lower()
     order_key = (order or "").strip().lower()
     if order_key not in ("asc", "desc"):
@@ -553,13 +612,13 @@ def task_list(
             "user": user,
             "tasks": tasks,
             "q": q or "",
-            "naznachenie": naznachenie or "",
+            "tag": tag or "",
             "status_filter": status or "",
             "author_filter": author_filter or "",
             "authors": _author_suggestions(db),
+            "all_tags": list_tags(db),
             "sort": sort_key,
             "order": active_order,
-            "naznachenie_labels": NAZNACHENIE_LABELS,
             "status_labels": STATUS_LABELS,
             "format_igraetsya": format_igraetsya,
             "format_idea_label": format_idea_label,
@@ -584,7 +643,7 @@ def new_task_page(
             user=user,
             task=None,
             parsed=None,
-            status_labels=_available_statuses(None),
+            status_labels=_available_statuses(allow_metodkom=True),
             just_created=created == "1",
         ),
     )
@@ -605,7 +664,7 @@ def parse_task_paste(request: Request, db: Session = Depends(get_db), paste: str
             task=None,
             parsed=parsed,
             paste=paste,
-            status_labels=_available_statuses(parsed.get("naznachenie")),
+            status_labels=_available_statuses(allow_metodkom=True),
         ),
     )
 
@@ -617,7 +676,7 @@ def _build_task_from_form(
     title: str,
     condition: str,
     author: str,
-    naznachenie: str,
+    tag_slugs: list[str],
     status: str,
     proverena: str,
     video_url: str,
@@ -635,7 +694,6 @@ def _build_task_from_form(
         raise ValueError("Укажите корректную дату и время сообщения в Telegram")
     tg_dt = _telegram_dt_minute(tg_dt)
 
-    # При создании нельзя оставить дату/время из последней задачи без изменения
     if task_id is None:
         default_str = _default_telegram_datetime(db)
         if default_str and tg_dt.strftime("%Y-%m-%dT%H:%M") == default_str:
@@ -643,7 +701,6 @@ def _build_task_from_form(
                 "Измените дату и время в Telegram — сейчас стоит значение из последней задачи"
             )
 
-    # Уникальность даты: при создании всегда; при правке — только если дату поменяли
     datetime_unchanged = False
     if task_id is not None:
         current = db.get(Task, task_id)
@@ -666,16 +723,21 @@ def _build_task_from_form(
     if not author_raw:
         raise ValueError("Укажите автора задачи")
     author = normalize_author(author_raw)
-    if not naznachenie.strip():
-        raise ValueError("Выберите назначение")
+
+    tags = tags_by_slugs(db, tag_slugs or [])
+    if not tags:
+        raise ValueError("Выберите хотя бы один тег")
 
     try:
         idea_num = parse_idea_number_input(idea_number)
     except ValueError as e:
         raise ValueError(str(e)) from e
 
-    if status == Status.METODKOM.value and naznachenie not in METODKOM_ONLY_FOR:
-        raise ValueError("Статус «Отправлена в методкомиссию» только для ТЮФ / ТЮФ и ТЮЕ")
+    allow_metodkom = any(t.has_metodkom for t in tags)
+    is_kk = any(t.slug == "kapitanka" for t in tags)
+
+    if status == Status.METODKOM.value and not allow_metodkom:
+        raise ValueError("Статус «Отправлена в методкомиссию» недоступен для выбранных тегов")
 
     if status == Status.FORMULIROVKA.value and not formulirovka.strip():
         raise ValueError("Заполните «Формулировку перед отправлением»")
@@ -683,9 +745,9 @@ def _build_task_from_form(
     if status == Status.IGRAETSYA.value:
         if not itogovaya_formulirovka.strip():
             raise ValueError("Заполните «Итоговую формулировку»")
-        if naznachenie == Naznachenie.KAPITANY.value:
+        if is_kk:
             if not etap_kk.strip() or not turnir_year.strip():
-                raise ValueError("Для КК укажите этап (полуфинал/финал) и год")
+                raise ValueError("Для Капитанки укажите этап (полуфинал/финал) и год")
         else:
             if not turnir.strip() or not turnir_year.strip() or not task_number.strip():
                 raise ValueError("Укажите турнир (ТЮФ/ТЮЕ), год и номер задачи")
@@ -700,7 +762,7 @@ def _build_task_from_form(
     task.formulirovka = formulirovka.strip() or None
     task.itogovaya_formulirovka = itogovaya_formulirovka.strip() or None
     task.author = author.strip() or None
-    task.naznachenie = naznachenie or None
+    task.tags = tags
     task.status = status or Status.TG.value
     task.proverena = proverena or None
     task.archived = task.status == Status.ARCHIVED.value
@@ -713,13 +775,12 @@ def _build_task_from_form(
         task.turnir_year = int(turnir_year) if turnir_year.strip() else None
         task.task_number = int(task_number) if task_number.strip() else None
         task.etap_kk = etap_kk or None
-        if naznachenie == Naznachenie.KAPITANY.value:
+        if is_kk:
             task.turnir = None
             task.task_number = None
         else:
             task.etap_kk = None
     else:
-        # при откате статуса лишние поля сбрасываем
         _apply_status_field_clears(task, status)
 
     if task_id is None:
@@ -781,7 +842,7 @@ async def create_task(
     title: str = Form(""),
     condition: str = Form(""),
     author: str = Form(""),
-    naznachenie: str = Form(""),
+    tag_slugs: list[str] = Form(default=[]),
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
     video_url: str = Form(""),
@@ -809,7 +870,7 @@ async def create_task(
             title,
             condition,
             author,
-            naznachenie,
+            tag_slugs if isinstance(tag_slugs, list) else ([tag_slugs] if tag_slugs else []),
             status,
             proverena,
             video_url,
@@ -857,7 +918,7 @@ async def create_task(
             "title": title,
             "condition": condition,
             "author": author,
-            "naznachenie": naznachenie,
+            "tag_slugs": tag_slugs if isinstance(tag_slugs, list) else ([tag_slugs] if tag_slugs else []),
             "status": status,
             "proverena": proverena,
             "video_url": video_url,
@@ -880,7 +941,7 @@ async def create_task(
                 task=None,
                 parsed=None,
                 form=form,
-                status_labels=_available_statuses(naznachenie),
+                status_labels=_available_statuses(allow_metodkom=True),
                 error=str(e),
             ),
             status_code=400,
@@ -925,7 +986,7 @@ def task_detail(
             "task": task,
             "task_files": task_files,
             "just_created": created == "1",
-            "naznachenie_labels": NAZNACHENIE_LABELS,
+            
             "status_labels": STATUS_LABELS,
             "proverena_labels": PROVERENA_LABELS,
             "format_igraetsya": format_igraetsya,
@@ -958,9 +1019,8 @@ def edit_task_page(
     target = pending_status or from_status
     if target and target not in STATUS_LABELS:
         target = None
-    if target and BOARD_STATUSES.get(task.naznachenie or ""):
-        if target not in {s.value for s in BOARD_STATUSES[task.naznachenie]}:
-            target = None
+    if target == Status.METODKOM.value and not task_allows_metodkom(task):
+        target = None
 
     hint = None
     if target == Status.FORMULIROVKA.value:
@@ -968,7 +1028,8 @@ def edit_task_page(
     elif target == Status.IGRAETSYA.value:
         hint = "Заполните «Итоговую формулировку» и данные турнира, затем «Сохранить». «Отмена» — статус не изменится."
 
-    cancel_url = f"/kanban/{task.naznachenie}" if task.naznachenie else f"/tasks/{task.id}"
+    first_tag = sorted(task.tags, key=lambda t: (t.sort_order, t.name))[0] if task.tags else None
+    cancel_url = f"/kanban/{first_tag.slug}" if first_tag else f"/tasks/{task.id}"
     task_files = [a for a in task.attachments if a.comment_id is None]
     attach_idea_occurrences(db, [task])
 
@@ -981,7 +1042,7 @@ def edit_task_page(
             task=task,
             parsed=None,
             pending_status=target,
-            status_labels=_available_statuses(task.naznachenie),
+            status_labels=_available_statuses(allow_metodkom=task_allows_metodkom(task)),
             status_hint=hint,
             cancel_url=cancel_url,
             task_files=task_files,
@@ -998,7 +1059,7 @@ async def update_task(
     title: str = Form(""),
     condition: str = Form(""),
     author: str = Form(""),
-    naznachenie: str = Form(""),
+    tag_slugs: list[str] = Form(default=[]),
     status: str = Form(Status.TG.value),
     proverena: str = Form(""),
     video_url: str = Form(""),
@@ -1028,7 +1089,7 @@ async def update_task(
             title,
             condition,
             author,
-            naznachenie,
+            tag_slugs if isinstance(tag_slugs, list) else ([tag_slugs] if tag_slugs else []),
             status,
             proverena,
             video_url,
@@ -1059,7 +1120,7 @@ async def update_task(
             "title": title,
             "condition": condition,
             "author": author,
-            "naznachenie": naznachenie,
+            "tag_slugs": tag_slugs if isinstance(tag_slugs, list) else ([tag_slugs] if tag_slugs else []),
             "status": status,
             "proverena": proverena,
             "video_url": video_url,
@@ -1090,7 +1151,7 @@ async def update_task(
                 task=task,
                 form=form,
                 error=error,
-                status_labels=_available_statuses(naznachenie),
+                status_labels=_available_statuses(allow_metodkom=True),
                 task_files=task_files_existing,
             ),
             status_code=400,
@@ -1102,7 +1163,7 @@ async def update_task(
             "title": title,
             "condition": condition,
             "author": author,
-            "naznachenie": naznachenie,
+            "tag_slugs": tag_slugs if isinstance(tag_slugs, list) else ([tag_slugs] if tag_slugs else []),
             "status": status,
             "proverena": proverena,
             "video_url": video_url,
@@ -1125,7 +1186,7 @@ async def update_task(
                 task=task,
                 parsed=None,
                 form=form,
-                status_labels=_available_statuses(naznachenie),
+                status_labels=_available_statuses(allow_metodkom=True),
                 error=str(e),
                 task_files=task_files_existing,
             ),
@@ -1387,11 +1448,11 @@ def _import_page_ctx(db: Session, user: str, **extra):
         "rows": None,
         "error": None,
         "success": None,
-        "naznachenie_labels": NAZNACHENIE_LABELS,
+        "all_tags": list_tags(db),
+        "default_tag_slugs": list(DEFAULT_TAG_SLUGS),
         "existing_links": _import_existing_link_options(db),
         "default_task_author": DEFAULT_TASK_AUTHOR,
         "default_comment_author": DEFAULT_COMMENT_AUTHOR,
-        "default_naznachenie": DEFAULT_NAZNACHENIE,
         "local_exports": [{"path": str(p), "name": p.name} for p in local_dirs],
         "export_root": None,
         "chat_name": None,
@@ -1703,7 +1764,9 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         title = (form.get(f"title_{i}") or "").strip() or None
         condition = (form.get(f"condition_{i}") or "").strip()
         sources = (form.get(f"sources_{i}") or "").strip() or None
-        naznachenie = (form.get(f"naznachenie_{i}") or "").strip() or DEFAULT_NAZNACHENIE
+        row_tag_slugs = [s.strip() for s in form.getlist(f"tag_slugs_{i}") if str(s).strip()]
+        if not row_tag_slugs:
+            row_tag_slugs = list(DEFAULT_TAG_SLUGS)
         idea_number_raw = (form.get(f"idea_number_{i}") or "").strip()
         try:
             idea_number = parse_idea_number_input(idea_number_raw)
@@ -1746,7 +1809,6 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             title=title,
             condition=condition,
             author=author,
-            naznachenie=naznachenie,
             status=Status.TG.value,
             archived=False,
             video_url=video_url,
@@ -1755,6 +1817,9 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         )
         db.add(task)
         db.flush()
+        task.tags = tags_by_slugs(db, row_tag_slugs)
+        if not task.tags:
+            task.tags = tags_by_slugs(db, list(DEFAULT_TAG_SLUGS))
         record_created(db, task, user)
         draft_to_task[draft_key] = task.id
         created_tasks += 1
@@ -1855,7 +1920,7 @@ def export_txt(
     request: Request,
     db: Session = Depends(get_db),
     q: str = Query(None),
-    naznachenie: str = Query(None),
+    tag: str = Query(None),
     status: str = Query(None),
     author: str = Query(None),
 ):
@@ -1864,7 +1929,7 @@ def export_txt(
         return RedirectResponse("/login", status_code=303)
 
     author_filter = (author or "").strip() or None
-    tasks = _filter_tasks(db, q, naznachenie, status, author_filter).options(
+    tasks = _filter_tasks(db, q, tag, status, author_filter).options(
         selectinload(Task.comments).selectinload(Comment.attachments),
         selectinload(Task.attachments),
     ).all()
@@ -1884,7 +1949,7 @@ def export_csv(
     request: Request,
     db: Session = Depends(get_db),
     q: str = Query(None),
-    naznachenie: str = Query(None),
+    tag: str = Query(None),
     status: str = Query(None),
     author: str = Query(None),
 ):
@@ -1893,7 +1958,7 @@ def export_csv(
         return RedirectResponse("/login", status_code=303)
 
     author_filter = (author or "").strip() or None
-    tasks = _filter_tasks(db, q, naznachenie, status, author_filter).options(
+    tasks = _filter_tasks(db, q, tag, status, author_filter).options(
         selectinload(Task.comments).selectinload(Comment.attachments),
         selectinload(Task.attachments),
     ).all()
