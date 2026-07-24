@@ -34,6 +34,8 @@
         <span class="hint">
           {% if task and task.idea_number is not none %}
           Сейчас: {{ format_idea_label(task) }}
+          {% elif max_idea_number is not none %}
+          Сейчас максимальный номер: {{ max_idea_number }}
           {% else %}
           Например 8 или 8(2)
           {% endif %}

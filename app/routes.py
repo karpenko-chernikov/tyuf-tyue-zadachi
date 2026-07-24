@@ -2,11 +2,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
+import re
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import or_, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, selectinload
 
@@ -260,6 +261,10 @@ def _allocate_telegram_datetime(
     )
 
 
+def _max_idea_number(db: Session) -> int | None:
+    return db.query(func.max(Task.idea_number)).scalar()
+
+
 def _form_context(db: Session, **extra):
     ctx = {
         "authors": _author_suggestions(db),
@@ -271,6 +276,7 @@ def _form_context(db: Session, **extra):
         "default_comment_author": DEFAULT_COMMENT_AUTHOR,
         "default_task_author": DEFAULT_TASK_AUTHOR,
         "default_naznachenie": DEFAULT_NAZNACHENIE,
+        "max_idea_number": _max_idea_number(db),
         "form": None,
         "error": None,
         "status_hint": None,
@@ -1306,16 +1312,40 @@ def delete_task(request: Request, task_id: int, db: Session = Depends(get_db)):
     return RedirectResponse("/", status_code=303)
 
 
-def _existing_tasks_by_minute(db: Session) -> dict[str, tuple[int, str]]:
+def _existing_tasks_by_minute(
+    db: Session,
+) -> dict[str, list[tuple[int, str, str | None, int | None]]]:
+    """Минута Telegram → список задач: (id, label, title, idea_number)."""
     tasks = db.query(Task).order_by(Task.telegram_datetime.asc(), Task.id.asc()).all()
     attach_idea_occurrences(db, tasks)
-    out: dict[str, tuple[int, str]] = {}
+    out: dict[str, list[tuple[int, str, str | None, int | None]]] = {}
     for task in tasks:
         if not task.telegram_datetime:
             continue
         key = _telegram_dt_minute(task.telegram_datetime).strftime("%Y-%m-%dT%H:%M")
-        out[key] = (task.id, format_idea_label(task))
+        out.setdefault(key, []).append(
+            (task.id, format_idea_label(task), task.title, task.idea_number)
+        )
     return out
+
+
+def _existing_comment_keys(db: Session) -> set[tuple[str, str, str]]:
+    """(минута Telegram задачи, автор, начало текста) — уже сохранённые комментарии."""
+    keys: set[tuple[str, str, str]] = set()
+    rows = (
+        db.query(Comment.text, Comment.author, Task.telegram_datetime)
+        .join(Task, Task.id == Comment.task_id)
+        .all()
+    )
+    for text, author, tg_dt in rows:
+        if not tg_dt:
+            continue
+        minute = _telegram_dt_minute(tg_dt).strftime("%Y-%m-%dT%H:%M")
+        body = re.sub(r"\s+", " ", (text or "").strip().lower().replace("ё", "е"))[:180]
+        who = (author or "").strip().lower().replace("ё", "е")
+        if body:
+            keys.add((minute, who, body))
+    return keys
 
 
 def _processed_import_msg_ids(db: Session) -> set[int]:
@@ -1524,12 +1554,19 @@ async def import_parse(
             else:
                 raise ValueError("Загрузите result.json или укажите папку экспорта в data/imports")
 
-        rows, chats = parse_telegram_export(
+        rows, chats, synced_msg_ids = parse_telegram_export(
             payload,
             existing_by_minute=_existing_tasks_by_minute(db),
             processed_msg_ids=_processed_import_msg_ids(db),
+            existing_comment_keys=_existing_comment_keys(db),
             chat_name=chosen_chat,
         )
+        # Задачи уже в БД, а таблица обработанных пуста (типично на новом сервере) —
+        # запоминаем совпавшие msg_id, чтобы следующий разбор их не показывал.
+        if synced_msg_ids:
+            for mid in synced_msg_ids:
+                _mark_import_msg_processed(db, mid, "synced")
+            db.commit()
         chats_meta = [
             {"name": c.get("name"), "messages": len(c.get("messages") or [])} for c in chats
         ]
