@@ -18,6 +18,8 @@ data/imports/
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
+# состояние ежемесячного Telegram-бэкапа
+data/tg_monthly_state.json
 
 # OS / IDE
 .DS_Store

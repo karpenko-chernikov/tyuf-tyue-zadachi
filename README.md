@@ -28,6 +28,7 @@
 - канбан — SortableJS, смена статуса через API  
 - импорт — разбор JSON-экспорта Telegram Desktop (идеи, комментарии, медиа, привязка к задачам)  
 - аудит — журнал изменений полей задачи  
+- Telegram-бот (опционально) — уведомление о новой задаче; раз в месяц TXT-экспорт в чат  
 
 База и медиа не входят в git: на сервере монтируется том `data/`.
 
@@ -68,6 +69,7 @@ app/
   routes.py        HTTP API и страницы
   models.py        Task, Tag, Comment, Attachment, History, User
   tags.py          теги и миграция с назначения
+  telegram_bot.py  уведомления и ежемесячный TXT в Telegram
   tg_import.py     разбор экспорта Telegram
   files.py         загрузка и отдача вложений
   history.py       журнал изменений

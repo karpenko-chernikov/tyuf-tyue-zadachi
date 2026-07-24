@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,6 +14,7 @@ from app.auth import ensure_users
 from app.models import Task
 from app.routes import router
 from app.tags import ensure_tags, migrate_naznachenie_to_tags
+from app.telegram_bot import start_telegram_scheduler, stop_telegram_scheduler
 
 load_dotenv()
 
@@ -135,7 +137,17 @@ def _seed_and_migrate_tags():
 
 _seed_and_migrate_tags()
 
-app = FastAPI(title="Задачи ТЮФ/ТЮЕ")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    start_telegram_scheduler()
+    try:
+        yield
+    finally:
+        stop_telegram_scheduler()
+
+
+app = FastAPI(title="Задачи ТЮФ/ТЮЕ", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SECRET_KEY", "change-me-to-random-string"),

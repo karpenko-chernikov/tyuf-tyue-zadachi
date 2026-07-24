@@ -41,11 +41,11 @@
           {% endif %}
         </span>
       </label>
-      <label>Дата и время в Telegram *
+      <label>Дата и время *
         <input type="datetime-local" name="telegram_datetime" required
           value="{% if f.telegram_datetime %}{{ f.telegram_datetime }}{% elif task %}{{ task.telegram_datetime.strftime('%Y-%m-%dT%H:%M') }}{% elif default_telegram_datetime %}{{ default_telegram_datetime }}{% endif %}">
-        {% if not task and not f.telegram_datetime and default_telegram_datetime %}
-        <span class="hint">Из последней задачи — поменяйте, если нужно</span>
+        {% if not task and not f.telegram_datetime %}
+        <span class="hint">Сейчас по Москве; при импорте из Telegram подставится время сообщения</span>
         {% endif %}
       </label>
     </div>

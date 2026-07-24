@@ -55,6 +55,15 @@ from app.tags import (
     task_allows_metodkom,
     task_is_kapitanka,
 )
+from app.telegram_bot import (
+    app_base_url,
+    notify_import_summary,
+    notify_new_task,
+    run_monthly_backup,
+    send_message,
+    telegram_monthly_day,
+    tg_configured,
+)
 from app.tg_import import (
     find_local_export_dirs,
     parse_telegram_export,
@@ -226,11 +235,21 @@ def _tag_slugs_from_form(form) -> list[str]:
     return [str(s).strip() for s in raw if str(s).strip()]
 
 
+def _moscow_now_minute() -> datetime:
+    """Текущее время в Москве без tzinfo (как в datetime-local и экспорте TG)."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("Europe/Moscow")).replace(
+            tzinfo=None, second=0, microsecond=0
+        )
+    except Exception:
+        return datetime.now().replace(second=0, microsecond=0)
+
+
 def _default_telegram_datetime(db: Session) -> str | None:
-    last = db.query(Task).order_by(Task.id.desc()).first()
-    if last and last.telegram_datetime:
-        return last.telegram_datetime.strftime("%Y-%m-%dT%H:%M")
-    return None
+    """Для новой задачи — сейчас по Москве; импорт подставляет своё время из экспорта."""
+    return _moscow_now_minute().strftime("%Y-%m-%dT%H:%M")
 
 
 def _telegram_dt_minute(dt: datetime) -> datetime:
@@ -338,6 +357,9 @@ def _settings_ctx(request: Request, db: Session, **extra):
         "user": login_required(request),
         "username": request.session.get("username", ""),
         "all_tags": list_tags(db),
+        "tg_configured": tg_configured(),
+        "tg_monthly_day": telegram_monthly_day(),
+        "app_base_url": app_base_url(),
         "error": None,
         "success": None,
     }
@@ -380,6 +402,37 @@ def settings_password(
         return templates.TemplateResponse(request, "settings.html", ctx, status_code=400)
 
     return templates.TemplateResponse(request, "settings.html", ctx)
+
+
+@router.post("/settings/telegram/test")
+def settings_telegram_test(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    ok = send_message(text=f"Тест от ТЮФ/ТЮЕ · {user} · {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    ctx = _settings_ctx(
+        request,
+        db,
+        success="Тестовое сообщение отправлено" if ok else None,
+        error=None if ok else "Не удалось отправить (проверьте токен, chat_id и логи)",
+    )
+    return templates.TemplateResponse(request, "settings.html", ctx, status_code=200 if ok else 400)
+
+
+@router.post("/settings/telegram/backup")
+def settings_telegram_backup(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    result = run_monthly_backup(force=True)
+    any_ok = result.endswith(": ok") or result == "TXT: ok"
+    ctx = _settings_ctx(
+        request,
+        db,
+        success=f"Экспорт: {result}" if any_ok else None,
+        error=None if any_ok else f"Экспорт не отправлен: {result}",
+    )
+    return templates.TemplateResponse(request, "settings.html", ctx, status_code=200 if any_ok else 400)
 
 
 @router.post("/settings/tags")
@@ -691,15 +744,11 @@ def _build_task_from_form(
 ) -> Task:
     tg_dt = parse_datetime_local(telegram_datetime)
     if not tg_dt:
-        raise ValueError("Укажите корректную дату и время сообщения в Telegram")
+        if task_id is None:
+            tg_dt = _moscow_now_minute()
+        else:
+            raise ValueError("Укажите корректную дату и время сообщения в Telegram")
     tg_dt = _telegram_dt_minute(tg_dt)
-
-    if task_id is None:
-        default_str = _default_telegram_datetime(db)
-        if default_str and tg_dt.strftime("%Y-%m-%dT%H:%M") == default_str:
-            raise ValueError(
-                "Измените дату и время в Telegram — сейчас стоит значение из последней задачи"
-            )
 
     datetime_unchanged = False
     if task_id is not None:
@@ -710,12 +759,16 @@ def _build_task_from_form(
     if not datetime_unchanged:
         other = _task_with_telegram_datetime(db, tg_dt, exclude_id=task_id)
         if other:
-            attach_idea_occurrences(db, [other])
-            label = format_idea_label(other)
-            raise ValueError(
-                f"Уже есть задача ({label}) с такой же датой и временем в Telegram — "
-                f"укажите другое время"
-            )
+            if task_id is None:
+                # Новая задача: если минута занята — сдвигаем, как при импорте
+                tg_dt, _shifted = _allocate_telegram_datetime(db, tg_dt)
+            else:
+                attach_idea_occurrences(db, [other])
+                label = format_idea_label(other)
+                raise ValueError(
+                    f"Уже есть задача ({label}) с такой же датой и временем в Telegram — "
+                    f"укажите другое время"
+                )
 
     if not condition.strip():
         raise ValueError("Заполните условие задачи")
@@ -896,6 +949,7 @@ async def create_task(
             record_file_added(db, task.id, user, att.filename, for_comment=False)
         db.commit()
         db.refresh(task)
+        notify_new_task(task, saved_by=user)
         if after == "new":
             return RedirectResponse("/new?created=1", status_code=303)
         return RedirectResponse(f"/tasks/{task.id}?created=1", status_code=303)
@@ -1894,6 +1948,12 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         )
 
     db.commit()
+
+    if created_tasks:
+        notify_import_summary(
+            created_tasks=created_tasks,
+            created_comments=created_comments,
+        )
 
     parts = [
         f"Создано задач: {created_tasks}",

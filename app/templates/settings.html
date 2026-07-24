@@ -33,7 +33,6 @@
     <li>
       <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
       <code>{{ t.slug }}</code>
-      {% if t.has_metodkom %}<span class="muted">· методком</span>{% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -51,6 +50,28 @@
     </label>
     <button type="submit" class="btn primary">Создать тег</button>
   </form>
+</section>
+
+<section class="card">
+  <h2>Telegram</h2>
+  {% if tg_configured %}
+  <p class="muted">Бот настроен: уведомления о новых задачах и раз в месяц TXT-экспорт всех задач (день {{ tg_monthly_day }}). Полный файл БД в Telegram не шлётся — слишком большой из‑за медиа.</p>
+  {% if app_base_url %}
+  <p class="muted">Ссылки в уведомлениях: <code>{{ app_base_url }}</code></p>
+  {% else %}
+  <p class="muted">Ссылка на задачу в уведомлениях пока без адреса — задайте <code>APP_BASE_URL</code> в <code>.env</code> (публичный URL сайта, без слэша в конце). Для проверки локально можно <code>http://127.0.0.1:8000</code>, но коллеги по чату его не откроют.</p>
+  {% endif %}
+  <div class="actions-inline">
+    <form method="post" action="/settings/telegram/test">
+      <button type="submit" class="btn secondary">Тестовое сообщение</button>
+    </form>
+    <form method="post" action="/settings/telegram/backup">
+      <button type="submit" class="btn secondary">Отправить TXT сейчас</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted">Не настроено. Заполните <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code> и при желании <code>APP_BASE_URL</code> в <code>.env</code>, затем перезапустите приложение.</p>
+  {% endif %}
 </section>
 
 <section class="card">
