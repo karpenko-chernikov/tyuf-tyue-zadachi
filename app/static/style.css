@@ -197,15 +197,24 @@ a:hover { text-decoration: underline; }
   width: 100%;
 }
 .table-tasks th:nth-child(1),
-.table-tasks td:nth-child(1) { width: 5.5rem; }
+.table-tasks td:nth-child(1) { width: 7.5rem; }
 .table-tasks th:nth-child(3),
 .table-tasks td:nth-child(3) { width: 8.5rem; }
 .table-tasks th:nth-child(4),
-.table-tasks td:nth-child(4) { width: 10.5rem; }
+.table-tasks td:nth-child(4) { width: 9.5rem; }
 .table-tasks th:nth-child(5),
 .table-tasks td:nth-child(5) { width: 8rem; }
 .table-tasks th:nth-child(6),
-.table-tasks td:nth-child(6) { width: 14rem; }
+.table-tasks td:nth-child(6) { width: 13rem; }
+.table-tasks td:nth-child(1),
+.table-tasks td:nth-child(2) {
+  overflow: hidden;
+}
+.table-tasks .idea-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .table-tasks .task-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;

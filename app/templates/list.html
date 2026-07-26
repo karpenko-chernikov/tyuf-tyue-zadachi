@@ -74,7 +74,7 @@
     <tr onclick="window.location='/tasks/{{ task.id }}'" class="clickable {% if task.status == 'archived' or task.archived %}row-archived{% endif %}">
       <td>
         <span class="idea-badge {% if task.idea_number is none %}idea-badge-empty{% endif %}">
-          {{ format_idea_label(task) }}
+          {% if task.idea_number is none %}без №{% else %}{{ format_idea_label(task) }}{% endif %}
         </span>
       </td>
       <td>
