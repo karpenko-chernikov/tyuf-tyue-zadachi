@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Список задач{% endblock %}
+{% block main_class %}container container-wide{% endblock %}
 {% block content %}
 {% set qs_base = 'q=' ~ (q|urlencode) ~ '&tag=' ~ (tag|urlencode) ~ '&status=' ~ (status_filter|urlencode) ~ '&author=' ~ (author_filter|urlencode) %}
 {% if sort == 'tg' and order == 'asc' %}

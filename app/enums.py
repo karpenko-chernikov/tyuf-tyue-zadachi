@@ -87,6 +87,7 @@ AUTHOR_ALIASES = {
     "артем": "Артем Голомолзин",
     "артем голомолзин": "Артем Голомолзин",
     "артём голомолзин": "Артем Голомолзин",
+    "artem golomolzin": "Артем Голомолзин",
     "илья": "Ilya",
     "ilya": "Ilya",
     "сергей б": "Сергей Булыкин",
@@ -99,7 +100,8 @@ def normalize_author(name: str | None, *, default: str | None = None) -> str:
     raw = (name or "").strip()
     if not raw:
         return DEFAULT_TASK_AUTHOR if default is None else default
-    key = raw.lower().replace("ё", "е")
+    # схлопываем пробелы; ё→е для словаря алиасов
+    key = " ".join(raw.lower().replace("ё", "е").split())
     if key in AUTHOR_ALIASES:
         return AUTHOR_ALIASES[key]
     for alias, canonical in AUTHOR_ALIASES.items():

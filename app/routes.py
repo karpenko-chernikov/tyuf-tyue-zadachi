@@ -5,14 +5,14 @@ from urllib.parse import quote
 import re
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import change_password, login_required
-from app.database import backup_sqlite_db, get_db
+from app.database import SessionLocal, backup_sqlite_db, get_db
 from app.enums import (
     AUTHORS,
     DEFAULT_COMMENT_AUTHOR,
@@ -59,11 +59,16 @@ from app.telegram_bot import (
     app_base_url,
     notify_import_summary,
     notify_new_task,
+    prepare_db_gzip,
+    run_email_backup,
     run_monthly_backup,
+    run_telegram_txt_backup,
     send_message,
     telegram_monthly_day,
     tg_configured,
 )
+from app.backup_config import load_backup_config, save_backup_config
+from app.mail_backup import smtp_configured
 from app.tg_import import (
     find_local_export_dirs,
     parse_telegram_export,
@@ -353,12 +358,20 @@ def logout(request: Request):
 
 
 def _settings_ctx(request: Request, db: Session, **extra):
+    from app.backup_config import format_recipients_text
+
+    cfg = load_backup_config()
     ctx = {
         "user": login_required(request),
         "username": request.session.get("username", ""),
         "all_tags": list_tags(db),
         "tg_configured": tg_configured(),
         "tg_monthly_day": telegram_monthly_day(),
+        "smtp_configured": smtp_configured(),
+        "backup_monthly_day": cfg["monthly_day"],
+        "backup_emails": format_recipients_text(cfg["recipients"]),
+        "backup_send_telegram": cfg["send_telegram"],
+        "backup_send_email": cfg["send_email"],
         "app_base_url": app_base_url(),
         "error": None,
         "success": None,
@@ -424,8 +437,8 @@ def settings_telegram_backup(request: Request, db: Session = Depends(get_db)):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    result = run_monthly_backup(force=True)
-    any_ok = result.endswith(": ok") or result == "TXT: ok"
+    result = run_telegram_txt_backup(force=True)
+    any_ok = "TG TXT: ok" in result
     ctx = _settings_ctx(
         request,
         db,
@@ -433,6 +446,96 @@ def settings_telegram_backup(request: Request, db: Session = Depends(get_db)):
         error=None if any_ok else f"Экспорт не отправлен: {result}",
     )
     return templates.TemplateResponse(request, "settings.html", ctx, status_code=200 if any_ok else 400)
+
+
+@router.post("/settings/backup")
+def settings_backup_save(
+    request: Request,
+    db: Session = Depends(get_db),
+    monthly_day: int = Form(1),
+    emails: str = Form(""),
+    send_telegram: str = Form(""),
+    send_email: str = Form(""),
+):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        cfg = save_backup_config(
+            monthly_day=monthly_day,
+            recipients=emails,
+            send_telegram=send_telegram in ("1", "on", "true", "yes"),
+            send_email=send_email in ("1", "on", "true", "yes"),
+        )
+    except (TypeError, ValueError) as e:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _settings_ctx(request, db, error=str(e)),
+            status_code=400,
+        )
+    from app.backup_config import format_recipients_text
+
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        _settings_ctx(
+            request,
+            db,
+            success=(
+                f"Сохранено: TG — {cfg['monthly_day']}-го числа · "
+                f"почта:\n{format_recipients_text(cfg['recipients'])}"
+            ),
+        ),
+    )
+
+
+@router.post("/settings/backup/email")
+def settings_backup_email(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    result = run_email_backup(force=True)
+    any_ok = ": ok" in result or "): ok" in result
+    ctx = _settings_ctx(
+        request,
+        db,
+        success=f"Почта: {result}" if any_ok else None,
+        error=None if any_ok else f"Не отправлено: {result}",
+    )
+    return templates.TemplateResponse(request, "settings.html", ctx, status_code=200 if any_ok else 400)
+
+
+@router.post("/settings/backup/now")
+def settings_backup_now(request: Request, db: Session = Depends(get_db)):
+    """Полная плановая выгрузка: TXT в TG + БД+TXT на почту."""
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    result = run_monthly_backup(force=True)
+    any_ok = ": ok" in result
+    ctx = _settings_ctx(
+        request,
+        db,
+        success=f"Выгрузка: {result}" if any_ok else None,
+        error=None if any_ok else f"Не отправлено: {result}",
+    )
+    return templates.TemplateResponse(request, "settings.html", ctx, status_code=200 if any_ok else 400)
+
+
+@router.get("/settings/backup/db")
+def settings_download_db(request: Request, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    from fastapi.responses import FileResponse
+
+    db_gz = prepare_db_gzip()
+    return FileResponse(
+        path=db_gz,
+        filename=db_gz.name,
+        media_type="application/gzip",
+    )
 
 
 @router.post("/settings/tags")
@@ -1008,6 +1111,7 @@ def task_detail(
     task_id: int,
     db: Session = Depends(get_db),
     created: str = Query(None),
+    error: str = Query(None),
 ):
     user = login_required(request)
     if not user:
@@ -1040,7 +1144,7 @@ def task_detail(
             "task": task,
             "task_files": task_files,
             "just_created": created == "1",
-            
+            "error": error,
             "status_labels": STATUS_LABELS,
             "proverena_labels": PROVERENA_LABELS,
             "format_igraetsya": format_igraetsya,
@@ -1272,28 +1376,36 @@ async def add_comment(
     if not text_clean and not has_files:
         return RedirectResponse(f"/tasks/{task_id}", status_code=303)
 
-    comment = Comment(
-        task_id=task_id,
-        text=text_clean,
-        author=author.strip() or user,
-    )
-    db.add(comment)
-    db.flush()
-    summary = text_clean if text_clean else ("файл" if has_files else "")
-    if has_files and text_clean:
-        summary = text_clean
-    elif has_files and not text_clean:
-        summary = "(только файл)"
-    record_comment_added(db, task_id, user, comment.author, summary)
-    for att in await save_uploads(
-        db,
-        task_id=task_id,
-        comment_id=comment.id,
-        uploads=uploads,
-        uploaded_by=user,
-    ):
-        record_file_added(db, task_id, user, att.filename, for_comment=True)
-    db.commit()
+    try:
+        comment = Comment(
+            task_id=task_id,
+            text=text_clean,
+            author=author.strip() or user,
+        )
+        db.add(comment)
+        db.flush()
+        summary = text_clean if text_clean else ("файл" if has_files else "")
+        if has_files and text_clean:
+            summary = text_clean
+        elif has_files and not text_clean:
+            summary = "(только файл)"
+        record_comment_added(db, task_id, user, comment.author, summary)
+        for att in await save_uploads(
+            db,
+            task_id=task_id,
+            comment_id=comment.id,
+            uploads=uploads,
+            uploaded_by=user,
+        ):
+            record_file_added(db, task_id, user, att.filename, for_comment=True)
+        db.commit()
+    except HTTPException as e:
+        db.rollback()
+        detail = e.detail if isinstance(e.detail, str) else "Не удалось загрузить файл"
+        return RedirectResponse(
+            f"/tasks/{task_id}?error={quote(detail)}",
+            status_code=303,
+        )
     return RedirectResponse(f"/tasks/{task_id}", status_code=303)
 
 
@@ -1327,7 +1439,22 @@ def download_file(
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    att = db.get(Attachment, attachment_id)
+    # Только метаданные — BLOB не тянем в RAM (иначе OOM на больших файлах / канбане)
+    from sqlalchemy.orm import load_only
+
+    att = (
+        db.query(Attachment)
+        .options(
+            load_only(
+                Attachment.id,
+                Attachment.filename,
+                Attachment.content_type,
+                Attachment.size,
+            )
+        )
+        .filter(Attachment.id == attachment_id)
+        .first()
+    )
     if not att:
         raise HTTPException(status_code=404, detail="Файл не найден")
 
@@ -1339,6 +1466,14 @@ def download_file(
     disposition = "inline" if inline else "attachment"
     media = attachment_media_type(att)
     size = int(att.size or 0)
+    if size <= 0:
+        size = int(
+            db.execute(
+                text("SELECT length(data) FROM attachments WHERE id = :id"),
+                {"id": attachment_id},
+            ).scalar()
+            or 0
+        )
 
     headers = {
         "Content-Disposition": f"{disposition}; filename*=UTF-8''{quoted}",
@@ -1346,32 +1481,77 @@ def download_file(
         "Accept-Ranges": "bytes",
     }
 
-    # HTML5 <video> часто запрашивает Range — читаем только нужный кусок из SQLite
-    range_header = request.headers.get("range") if as_video else None
-    if range_header and range_header.startswith("bytes=") and size > 0:
+    # Куски по 256 КБ — и для Range, и для полной отдачи (видео, фото, прочее)
+    chunk_size = 256 * 1024
+    max_range = 2 * 1024 * 1024
+
+    def read_slice(start: int, length: int) -> bytes:
+        piece = db.execute(
+            text(
+                "SELECT substr(data, :start, :length) FROM attachments WHERE id = :id"
+            ),
+            {"start": start + 1, "length": length, "id": attachment_id},
+        ).scalar()
+        if piece is None:
+            return b""
+        return bytes(piece)
+
+    def iter_blob(start: int = 0, end: int | None = None):
+        """Читает BLOB кусками в отдельной сессии (не держит request-сессию)."""
+        last = (end if end is not None else size - 1)
+        offset = start
+        with SessionLocal() as stream_db:
+            while offset <= last:
+                length = min(chunk_size, last - offset + 1)
+                piece = stream_db.execute(
+                    text(
+                        "SELECT substr(data, :start, :length) FROM attachments WHERE id = :id"
+                    ),
+                    {
+                        "start": offset + 1,
+                        "length": length,
+                        "id": attachment_id,
+                    },
+                ).scalar()
+                if not piece:
+                    break
+                data = bytes(piece)
+                offset += len(data)
+                yield data
+                if len(data) < length:
+                    break
+
+    range_header = request.headers.get("range") if size > 0 else None
+    if range_header and range_header.startswith("bytes="):
         try:
             _, _, rng = range_header.partition("=")
             start_s, _, end_s = rng.partition("-")
             start = int(start_s) if start_s else 0
-            end = int(end_s) if end_s else size - 1
-            end = min(end, size - 1)
+            if end_s:
+                end = int(end_s)
+            else:
+                end = start + max_range - 1
+            end = min(end, size - 1, start + max_range - 1)
             if start < 0 or start > end or start >= size:
                 raise ValueError("bad range")
             length = end - start + 1
-            # SQLite substr для BLOB — 1-based
-            chunk = db.execute(
-                text(
-                    "SELECT substr(data, :start, :length) FROM attachments WHERE id = :id"
-                ),
-                {"start": start + 1, "length": length, "id": attachment_id},
-            ).scalar()
-            if chunk is None:
-                raise HTTPException(status_code=404, detail="Файл не найден")
-            chunk = bytes(chunk)
+            # Маленький Range — одним ответом; большой — стримом
+            if length <= chunk_size:
+                chunk = read_slice(start, length)
+                if not chunk and length > 0:
+                    raise HTTPException(status_code=404, detail="Файл не найден")
+                headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+                headers["Content-Length"] = str(len(chunk))
+                return Response(
+                    content=chunk,
+                    status_code=206,
+                    media_type=media,
+                    headers=headers,
+                )
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-            headers["Content-Length"] = str(len(chunk))
-            return Response(
-                content=chunk,
+            headers["Content-Length"] = str(length)
+            return StreamingResponse(
+                iter_blob(start, end),
                 status_code=206,
                 media_type=media,
                 headers=headers,
@@ -1380,13 +1560,11 @@ def download_file(
             headers["Content-Range"] = f"bytes */{size}"
             return Response(status_code=416, headers=headers)
 
-    data = bytes(att.data)
-    headers["Content-Length"] = str(len(data))
-    return Response(
-        content=data,
-        media_type=media,
-        headers=headers,
-    )
+    if size <= 0:
+        raise HTTPException(status_code=404, detail="Файл пустой")
+
+    headers["Content-Length"] = str(size)
+    return StreamingResponse(iter_blob(), media_type=media, headers=headers)
 
 
 @router.post("/files/{attachment_id}/delete")
@@ -1592,6 +1770,7 @@ def _attach_import_media(
     task_id: int,
     comment_id: int | None,
     user: str,
+    skip_notes: list[str] | None = None,
 ) -> int:
     if not export_root or not rel_paths:
         return 0
@@ -1604,13 +1783,17 @@ def _attach_import_media(
         except ValueError:
             continue
         paths.append(candidate)
+    skipped: list[str] = []
     saved = save_local_files(
         db,
         task_id=task_id,
         comment_id=comment_id,
         paths=paths,
         uploaded_by=user,
+        skipped=skipped,
     )
+    if skip_notes is not None and skipped:
+        skip_notes.extend(skipped)
     for att in saved:
         record_file_added(db, task_id, user, att.filename, for_comment=comment_id is not None)
     return len(saved)
@@ -1878,6 +2061,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         draft_to_task[draft_key] = task.id
         created_tasks += 1
         _mark_import_msg_processed(db, msg_id, "idea")
+        idea_skips: list[str] = []
         attached_files += _attach_import_media(
             db,
             export_root=export_root,
@@ -1885,7 +2069,10 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             task_id=task.id,
             comment_id=None,
             user=user,
+            skip_notes=idea_skips,
         )
+        for note in idea_skips:
+            errors.append(f"Строка {i + 1}: пропуск файла — {note}")
 
     for i in range(row_count):
         if not _is_reviewed(i):
@@ -1912,6 +2099,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
 
         if kind == "media":
             # только файлы к задаче
+            media_skips: list[str] = []
             n = _attach_import_media(
                 db,
                 export_root=export_root,
@@ -1919,11 +2107,15 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
                 task_id=task_id,
                 comment_id=None,
                 user=user,
+                skip_notes=media_skips,
             )
             if n == 0:
-                errors.append(f"Строка {i + 1}: медиафайлы не найдены на диске")
+                detail = "; ".join(media_skips) if media_skips else "медиафайлы не найдены на диске"
+                errors.append(f"Строка {i + 1}: {detail}")
             else:
                 _mark_import_msg_processed(db, msg_id, "media")
+                for note in media_skips:
+                    errors.append(f"Строка {i + 1}: пропуск файла — {note}")
             attached_files += n
             continue
 
@@ -1938,6 +2130,7 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
         record_comment_added(db, task_id, user, author, text)
         created_comments += 1
         _mark_import_msg_processed(db, msg_id, "comment")
+        comment_skips: list[str] = []
         attached_files += _attach_import_media(
             db,
             export_root=export_root,
@@ -1945,7 +2138,10 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             task_id=task_id,
             comment_id=comment.id,
             user=user,
+            skip_notes=comment_skips,
         )
+        for note in comment_skips:
+            errors.append(f"Строка {i + 1}: пропуск файла — {note}")
 
     db.commit()
 

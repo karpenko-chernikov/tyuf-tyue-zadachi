@@ -21,6 +21,32 @@ SEED_TAGS: list[tuple[str, str, bool, int]] = [
     ("invent_yourself", "Invent yourself", True, 60),
 ]
 
+# Русские / короткие имена → slug (для строки «Теги: …» в Telegram)
+TAG_NAME_ALIASES: dict[str, str] = {
+    "тюф": "tyuf",
+    "tyuf": "tyuf",
+    "тюе": "tyue",
+    "tyue": "tyue",
+    "капитанка": "kapitanka",
+    "капитаны": "kapitanka",
+    "kapitanka": "kapitanka",
+    "кк": "kapitanka",
+    "конкурс капитанов": "kapitanka",
+    "sf4": "sf4",
+    "sf 4": "sf4",
+    "sf3": "sf3",
+    "sf 3": "sf3",
+    "invent yourself": "invent_yourself",
+    "invent_yourself": "invent_yourself",
+    "придумай сам": "invent_yourself",
+}
+
+_TAGS_LINE_RE = re.compile(
+    r"^(?:теги|tags|метки|назначение)\s*[:：\-–—]\s*(.+)$",
+    re.IGNORECASE,
+)
+_HASHTAG_RE = re.compile(r"#([^\s#.,;:]+)", re.UNICODE)
+
 _STATUSES_WITH_METODKOM = [
     Status.TG,
     Status.FORMULIROVKA,
@@ -119,6 +145,100 @@ def tags_by_slugs(db: Session, slugs: list[str]) -> list[Tag]:
     found = db.query(Tag).filter(Tag.slug.in_(clean)).all()
     by_slug = {t.slug: t for t in found}
     return [by_slug[s] for s in clean if s in by_slug]
+
+
+def tag_names_for_slugs(slugs: list[str]) -> str:
+    """Человекочитаемые имена тегов для превью/писем."""
+    by_slug = {s: name for s, name, *_ in SEED_TAGS}
+    names = [by_slug.get(s, s) for s in slugs if s]
+    return ", ".join(names) if names else "—"
+
+
+def resolve_tag_token(token: str) -> str | None:
+    raw = (token or "").strip().lower().replace("ё", "е").lstrip("#")
+    if not raw:
+        return None
+    raw = re.sub(r"\s+", " ", raw)
+    if raw in TAG_NAME_ALIASES:
+        return TAG_NAME_ALIASES[raw]
+    # без пробелов / подчёркиваний
+    compact = raw.replace(" ", "").replace("_", "")
+    for alias, slug in TAG_NAME_ALIASES.items():
+        if alias.replace(" ", "").replace("_", "") == compact:
+            return slug
+    known = {s for s, *_ in SEED_TAGS}
+    if raw in known:
+        return raw
+    return None
+
+
+def parse_explicit_tag_slugs(text: str | None) -> list[str]:
+    """
+    Явные теги из текста идеи.
+    Строка «Теги: ТЮФ, ТЮЕ» / «Теги: Капитанка» или хештеги #ТЮФ #SF4.
+    """
+    if not text or not str(text).strip():
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(slug: str | None) -> None:
+        if slug and slug not in seen:
+            seen.add(slug)
+            found.append(slug)
+
+    for ln in str(text).splitlines():
+        line = ln.strip()
+        if not line:
+            continue
+        m = _TAGS_LINE_RE.match(line)
+        if m:
+            chunk = m.group(1)
+            # ТЮФ, ТЮЕ / ТЮФ ТЮЕ / ТЮФ; ТЮЕ
+            parts = re.split(r"[,;/|]+|\s{2,}", chunk)
+            tokens: list[str] = []
+            for p in parts:
+                p = p.strip()
+                if not p:
+                    continue
+                # «ТЮФ и ТЮЕ»
+                if " и " in p.lower():
+                    tokens.extend(x.strip() for x in re.split(r"\s+и\s+", p, flags=re.I))
+                else:
+                    # одиночные слова / известные фразы
+                    # сначала пробуем целиком, потом по словам
+                    if resolve_tag_token(p):
+                        tokens.append(p)
+                    else:
+                        tokens.extend(re.findall(r"[^\s,;]+", p))
+            for tok in tokens:
+                add(resolve_tag_token(tok))
+            continue
+        for ht in _HASHTAG_RE.findall(line):
+            add(resolve_tag_token(ht))
+
+    order = [s for s, *_ in SEED_TAGS]
+    return sorted(found, key=lambda s: order.index(s) if s in order else 999)
+
+
+def strip_tag_markup(text: str | None) -> str | None:
+    """Убирает строки «Теги: …» и хештеги-теги из текста условия."""
+    if not text:
+        return None
+    lines_out: list[str] = []
+    for ln in str(text).splitlines():
+        if _TAGS_LINE_RE.match(ln.strip()):
+            continue
+        cleaned = _HASHTAG_RE.sub("", ln)
+        # не трогаем обычный текст без хештегов
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).rstrip()
+        if cleaned.strip():
+            lines_out.append(cleaned)
+        elif not ln.strip():
+            lines_out.append("")
+    result = "\n".join(lines_out).strip()
+    result = re.sub(r"\n{3,}", "\n\n", result).strip()
+    return result or None
 
 
 def infer_extra_tag_slugs(*texts: str | None) -> set[str]:

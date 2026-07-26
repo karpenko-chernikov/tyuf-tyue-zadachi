@@ -81,8 +81,8 @@ _migrate_archived_status()
 
 
 def _migrate_author_names():
-    """Короткие имена авторов → канонические (как в Telegram)."""
-    from app.enums import AUTHOR_ALIASES
+    """Короткие имена и варианты написания → канонические."""
+    from app.enums import normalize_author
     from app.models import Comment, Task
 
     db = SessionLocal()
@@ -91,6 +91,8 @@ def _migrate_author_names():
             "Никита": "Nikita Karpenko-Chernikov",
             "Артём": "Артем Голомолзин",
             "Артем": "Артем Голомолзин",
+            "Артём Голомолзин": "Артем Голомолзин",
+            "Artem Golomolzin": "Артем Голомолзин",
             "Илья": "Ilya",
             "Сергей Б": "Сергей Булыкин",
         }
@@ -106,6 +108,20 @@ def _migrate_author_names():
                 .filter(Comment.author == old)
                 .update({Comment.author: new}, synchronize_session=False)
             )
+        # Подчистить любые другие варианты через normalize_author
+        seen: set[str] = set()
+        for model in (Task, Comment):
+            for (name,) in db.query(model.author).filter(model.author.isnot(None)).distinct():
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                canon = normalize_author(name, default=name)
+                if canon != name:
+                    changed += (
+                        db.query(model)
+                        .filter(model.author == name)
+                        .update({model.author: canon}, synchronize_session=False)
+                    )
         if changed:
             db.commit()
     finally:

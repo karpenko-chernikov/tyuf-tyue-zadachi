@@ -42,7 +42,7 @@ a:hover { text-decoration: underline; }
   z-index: 10;
 }
 .header-inner {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 14px 20px;
   display: flex;
@@ -73,7 +73,7 @@ a:hover { text-decoration: underline; }
 }
 .user { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
-.container { max-width: 960px; margin: 0 auto; padding: 28px 20px 72px; }
+.container { max-width: 1100px; margin: 0 auto; padding: 28px 20px 72px; }
 .container-wide { max-width: 1400px; }
 
 .page-header {
@@ -192,6 +192,46 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow);
 }
 .table-wrap .table { box-shadow: none; margin: 0; }
+.table-tasks {
+  table-layout: fixed;
+  width: 100%;
+}
+.table-tasks th:nth-child(1),
+.table-tasks td:nth-child(1) { width: 5.5rem; }
+.table-tasks th:nth-child(3),
+.table-tasks td:nth-child(3) { width: 8.5rem; }
+.table-tasks th:nth-child(4),
+.table-tasks td:nth-child(4) { width: 10.5rem; }
+.table-tasks th:nth-child(5),
+.table-tasks td:nth-child(5) { width: 8rem; }
+.table-tasks th:nth-child(6),
+.table-tasks td:nth-child(6) { width: 14rem; }
+.table-tasks .task-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+}
+.table-tasks .status-pill {
+  white-space: normal;
+  line-height: 1.25;
+  text-align: left;
+}
+.table-tasks .author-pill {
+  max-width: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: left;
+  height: auto;
+}
+.table-tasks .tag-chips {
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .table th, .table td {
   padding: 13px 14px;
   text-align: left;

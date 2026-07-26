@@ -28,11 +28,20 @@ TELEGRAM_BOT_TOKEN=…          # токен от @BotFather (спроси у Н
 TELEGRAM_CHAT_ID=-4781372763  # чат «Идеи для заданий на ТЮФ и ТЮЕ»
 APP_BASE_URL=https://problems.folomin.com
 TELEGRAM_MONTHLY_DAY=1
+
+# Почта для бэкапа (TXT + при возможности gzip БД). Пароль приложения Gmail:
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=…@gmail.com
+SMTP_PASSWORD=…               # App Password, не обычный пароль
+SMTP_FROM=…@gmail.com         # можно тот же, что USER
 ```
 
 `SECRET_KEY`, `DATABASE_URL`, пароли `PASS_*` — **не трогай**, если сайт уже работает.
 
 `APP_BASE_URL` — без слэша в конце. От этого зависят ссылки в уведомлениях бота.
+
+День выгрузки и список почт дальше правятся в **Настройки** на сайте (`data/backup_config.json`). Если БД больше ~18 МБ, письмо уйдёт с TXT и пометкой скачать БД кнопкой «Скачать БД».
 
 ## 3. Перезапустить приложение
 
@@ -48,6 +57,16 @@ TELEGRAM_MONTHLY_DAY=1
 или перезапуск docker-контейнера / systemd-сервиса — как у вас принято.
 
 После старта в логах должно быть что-то вроде `Application startup complete` и (если токен задан) старт inbox-poller.
+
+### Nginx / reverse proxy (видео и большие файлы)
+
+Лимит загрузки в приложении — **100 МБ**. Если перед uvicorn стоит nginx, в конфиге сайта должно быть не меньше:
+
+```nginx
+client_max_body_size 100M;
+```
+
+Иначе большие видео при загрузке через сайт отвалятся с 413, а в UI это может выглядеть как «файл не прикрепился». После правки nginx: `sudo nginx -t && sudo systemctl reload nginx`.
 
 ## 4. Один раз настроить бота в Telegram
 

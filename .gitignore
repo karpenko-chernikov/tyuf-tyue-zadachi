@@ -21,6 +21,7 @@ data/*.db-shm
 # состояние ежемесячного Telegram-бэкапа
 data/tg_monthly_state.json
 data/tg_inbox_offset.json
+data/backup_config.json
 
 # OS / IDE
 .DS_Store

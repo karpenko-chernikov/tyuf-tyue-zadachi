@@ -36,10 +36,14 @@ HELP_TEXT = (
     "Бот работает в две стороны.\n\n"
     "1) Задача на сайте → сообщение в чат идей.\n\n"
     "2) Идея в чате идей → превью сюда → «Сохранить».\n\n"
-    "Формат в чате идей:\n"
+    "Формат идеи:\n"
     "Идея №12\n"
     "Название\n"
     "Условие…\n"
+    "Теги: ТЮФ, ТЮЕ\n"
+    "(теги по-русски, можно несколько; "
+    "если строку не указать — будут ТЮФ и ТЮЕ)\n"
+    "Можно так: Теги: Капитанка  или  #ТЮФ #SF4\n"
     "+ медиа при необходимости\n\n"
     "Комментарий:\n"
     "К идее №12\n"
@@ -578,12 +582,14 @@ def _start_idea_preview(
 
 
 def _idea_preview_lines(payload: dict, warnings: list[str] | None = None) -> list[str]:
+    from app.tags import tag_names_for_slugs
+
     warnings = warnings or []
     lines = [
         "Из чата идей — превью. Сохранить на сайт?",
         f"Номер: {payload.get('idea_number')}",
         f"Название: {payload.get('title') or '—'}",
-        f"Теги: {', '.join(payload.get('tag_slugs') or []) or '—'}",
+        f"Теги: {tag_names_for_slugs(payload.get('tag_slugs') or [])}",
         f"Автор: {payload.get('author') or '—'}",
         f"Файлов: {len(payload.get('files') or [])}",
         "",

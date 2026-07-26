@@ -61,12 +61,10 @@ def app_base_url() -> str:
 
 
 def telegram_monthly_day() -> int:
-    raw = (os.getenv("TELEGRAM_MONTHLY_DAY") or "1").strip()
-    try:
-        day = int(raw)
-    except ValueError:
-        return 1
-    return max(1, min(28, day))
+    """День месяца для автоэкспорта (из backup_config / TELEGRAM_MONTHLY_DAY)."""
+    from app.backup_config import backup_monthly_day
+
+    return backup_monthly_day()
 
 
 def _api_url(method: str) -> str:
@@ -431,55 +429,171 @@ def _write_state(data: dict) -> None:
     STATE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def run_monthly_backup(*, force: bool = False) -> str:
-    """
-    Отправить TXT-экспорт всех задач в Telegram.
-    Полный .db в чат не шлём — с медиа он больше лимита бота (~50 МБ).
-    """
-    if not tg_configured():
-        return "Telegram не настроен (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)"
+def prepare_db_gzip() -> Path:
+    """Только gzip-копия SQLite (для скачивания с сайта)."""
+    import gzip
+    import shutil
 
-    now = datetime.now()
-    stamp_month = now.strftime("%Y-%m")
-    state = _read_state()
-    if not force and state.get("last_sent") == stamp_month:
-        return f"Экспорт за {stamp_month} уже отправлялся"
+    from app.database import DB_PATH
 
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = now.strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    db_copy = BACKUP_DIR / f"zadachi-{stamp}.db"
+    db_gz = BACKUP_DIR / f"zadachi-{stamp}.db.gz"
+    shutil.copy2(DB_PATH, db_copy)
+    with open(db_copy, "rb") as src, gzip.open(db_gz, "wb", compresslevel=6) as dst:
+        shutil.copyfileobj(src, dst, length=1024 * 1024)
+    try:
+        db_copy.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return db_gz
+
+
+def prepare_export_files() -> tuple[Path, Path]:
+    """TXT всех задач + gzip-копия SQLite. Возвращает (txt_path, db_gz_path)."""
+    from app.export import export_tasks_txt
+
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     txt_path = BACKUP_DIR / f"export-{stamp}.txt"
 
     db = SessionLocal()
     try:
-        from app.export import export_tasks_txt
-
         txt_path.write_text(export_tasks_txt(db), encoding="utf-8")
     finally:
         db.close()
 
-    ok_txt = send_document(
-        txt_path,
-        caption=f"Экспорт задач (TXT) · {stamp_month}",
+    db_gz = prepare_db_gzip()
+    return txt_path, db_gz
+
+
+def run_monthly_backup(*, force: bool = False, telegram: bool = True, email: bool = True) -> str:
+    """
+    Плановая выгрузка:
+    - Telegram: только TXT (раз в месяц в день monthly_day)
+    - почта: TXT + gzip БД (по расписанию каждого адреса)
+    """
+    from app.backup_config import (
+        emails_due_today,
+        load_backup_config,
+        recipient_period_key,
     )
-    if ok_txt:
-        state["last_sent"] = stamp_month
-        state["last_sent_at"] = now.isoformat(timespec="seconds")
+    from app.mail_backup import send_backup_email, smtp_configured
+
+    cfg = load_backup_config()
+    do_tg = bool(telegram and cfg.get("send_telegram", True))
+    do_mail = bool(email and cfg.get("send_email", True))
+
+    now = datetime.now()
+    stamp_month = now.strftime("%Y-%m")
+    state = _read_state()
+    email_last = dict(state.get("email_last") or {})
+
+    want_tg = (
+        do_tg
+        and tg_configured()
+        and (force or (now.day == int(cfg["monthly_day"]) and state.get("tg_last") != stamp_month))
+    )
+    due_emails = (
+        emails_due_today(when=now, force=force, state_email_last=email_last)
+        if do_mail and smtp_configured()
+        else []
+    )
+    want_mail = bool(due_emails)
+
+    if not want_tg and not want_mail:
+        if not force and do_tg and tg_configured() and state.get("tg_last") == stamp_month:
+            if do_mail and smtp_configured() and not due_emails:
+                return f"На сегодня выгрузок нет (TG за {stamp_month} уже был)"
+            return f"Экспорт TG за {stamp_month} уже отправлялся"
+        if not force:
+            return "На сегодня запланированных выгрузок нет"
+        missing = []
+        if do_tg and not tg_configured():
+            missing.append("Telegram")
+        if do_mail and not smtp_configured():
+            missing.append("SMTP")
+        if not do_tg and not do_mail:
+            return "В настройках выключены и Telegram, и почта"
+        if missing:
+            return "Не настроено: " + ", ".join(missing)
+        return "Некому отправлять"
+
+    txt_path, db_gz = prepare_export_files()
+    parts: list[str] = []
+    any_ok = False
+
+    if want_tg:
+        ok_txt = send_document(
+            txt_path,
+            caption=f"Экспорт задач (TXT) · {stamp_month}",
+        )
+        parts.append("TG TXT: ok" if ok_txt else "TG TXT: fail")
+        if ok_txt:
+            any_ok = True
+            state["tg_last"] = stamp_month
+            # совместимость со старым полем
+            state["last_sent"] = stamp_month
+            state["last_sent_at"] = now.isoformat(timespec="seconds")
+
+    if want_mail:
+        mail_result = send_backup_email(
+            to_addrs=due_emails,
+            subject=f"ТЮФ/ТЮЕ · бэкап {stamp_month}",
+            body=(
+                f"Автоматическая выгрузка задач ТЮФ/ТЮЕ за {stamp_month}.\n"
+                f"Во вложении: полный TXT и gzip-копия SQLite ({db_gz.name}).\n"
+            ),
+            attachments=[txt_path, db_gz],
+        )
+        mail_ok = mail_result == "ok" or mail_result.startswith("ok ")
+        parts.append(
+            f"Email ({', '.join(due_emails)}): {mail_result}"
+            if mail_ok
+            else f"Email: {mail_result}"
+        )
+        if mail_ok:
+            any_ok = True
+            # отметить период для каждого получателя из конфига
+            by_email = {r["email"].lower(): r for r in cfg["recipients"]}
+            for addr in due_emails:
+                rec = by_email.get(addr.lower())
+                if not rec:
+                    continue
+                email_last[addr.lower()] = recipient_period_key(rec, now)
+            state["email_last"] = email_last
+            state["last_sent_at"] = now.isoformat(timespec="seconds")
+
+    if any_ok:
+        state["last_result"] = "; ".join(parts)
         _write_state(state)
-        return "TXT: ok"
-    return "TXT: fail"
+    return "; ".join(parts)
+
+
+def run_email_backup(*, force: bool = True) -> str:
+    """Только почта: TXT + БД (для кнопки в настройках)."""
+    return run_monthly_backup(force=force, telegram=False, email=True)
+
+
+def run_telegram_txt_backup(*, force: bool = True) -> str:
+    """Только Telegram TXT (для кнопки в настройках)."""
+    return run_monthly_backup(force=force, telegram=True, email=False)
 
 
 def _scheduler_loop(stop: threading.Event) -> None:
+    from app.backup_config import anything_due_today
+
     # Первый час после старта — лёгкая пауза, чтобы не гонять при рестартах деплоя
     if stop.wait(60):
         return
     while not stop.is_set():
         try:
-            if tg_configured() and datetime.now().day == telegram_monthly_day():
+            if anything_due_today():
                 msg = run_monthly_backup(force=False)
-                logger.info("Monthly Telegram backup: %s", msg)
+                logger.info("Scheduled backup: %s", msg)
         except Exception:
-            logger.exception("Monthly Telegram backup failed")
+            logger.exception("Scheduled backup failed")
         # Проверяем раз в час
         if stop.wait(3600):
             break

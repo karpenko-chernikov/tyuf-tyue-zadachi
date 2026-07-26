@@ -9,7 +9,7 @@ from fastapi import HTTPException, UploadFile
 
 from app.models import Attachment
 
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 МБ (обычная загрузка из браузера)
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 МБ — как у импорта (видео с телефона часто больше 15 МБ)
 MAX_IMPORT_BYTES = 100 * 1024 * 1024  # 100 МБ (файлы из экспорта Telegram)
 MAX_FILES_PER_REQUEST = 10
 MAX_IMPORT_FILES_PER_ROW = 30
@@ -64,18 +64,33 @@ def save_local_files(
     paths: list[Path],
     uploaded_by: str,
     max_bytes: int = MAX_IMPORT_BYTES,
+    skipped: list[str] | None = None,
 ) -> list[Attachment]:
-    """Сохраняет файлы с диска (экспорт Telegram) как вложения."""
+    """Сохраняет файлы с диска (экспорт Telegram) как вложения.
+
+    Если передан ``skipped``, туда пишутся причины пропуска (нет файла / пустой / слишком большой).
+    """
     if not paths:
         return []
     if len(paths) > MAX_IMPORT_FILES_PER_ROW:
         paths = paths[:MAX_IMPORT_FILES_PER_ROW]
     saved: list[Attachment] = []
+    limit_mb = max_bytes // (1024 * 1024)
     for path in paths:
         if not path.is_file():
+            if skipped is not None:
+                skipped.append(f"{path.name}: нет на диске")
             continue
         size = path.stat().st_size
-        if size <= 0 or size > max_bytes:
+        if size <= 0:
+            if skipped is not None:
+                skipped.append(f"{path.name}: пустой")
+            continue
+        if size > max_bytes:
+            if skipped is not None:
+                skipped.append(
+                    f"{path.name}: {size / (1024 * 1024):.0f} МБ > лимита {limit_mb} МБ"
+                )
             continue
         filename = safe_filename(path.name)
         data = path.read_bytes()

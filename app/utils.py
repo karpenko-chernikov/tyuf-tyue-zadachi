@@ -19,7 +19,9 @@ AUTHOR_COLOR_FIXED = {
     "никита": 0,
     "nikita": 0,
     "артем голомолзин": 3,
+    "artem golomolzin": 3,
     "голомолзин": 3,
+    "golomolzin": 3,
     "артем барат": 6,
     "барат": 6,
     "александр миркин": 9,
@@ -145,24 +147,35 @@ def _split_paste_body(text: str) -> tuple[str | None, str | None]:
 
 def parse_paste(text: str) -> dict:
     """Разбор вставленного текста из Telegram."""
+    from app.tags import (
+        infer_tag_slugs_for_new_task,
+        parse_explicit_tag_slugs,
+        strip_tag_markup,
+    )
+
+    explicit_tags = parse_explicit_tag_slugs(text)
+    # Убираем «Теги: …» до разбора названия/условия, чтобы не стали заголовком
+    cleaned = strip_tag_markup(text) or ""
+
     idea_number = parse_idea_number(text)
     kapitany = is_kapitany(text)
     urls = extract_urls(text)
-    title, condition = _split_paste_body(text)
+    title, condition = _split_paste_body(cleaned)
 
     if condition:
         for url in urls:
             condition = condition.replace(url, "").strip()
         condition = re.sub(r"\n{3,}", "\n\n", condition).strip() or None
 
-    from app.tags import infer_tag_slugs_for_new_task
-
-    tag_slugs = infer_tag_slugs_for_new_task(
-        kapitany=kapitany,
-        title=title,
-        condition=condition,
-        extra_text=text,
-    )
+    if explicit_tags:
+        tag_slugs = explicit_tags
+    else:
+        tag_slugs = infer_tag_slugs_for_new_task(
+            kapitany=kapitany,
+            title=title,
+            condition=condition,
+            extra_text=text,
+        )
 
     return {
         "idea_number": idea_number,

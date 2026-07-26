@@ -24,6 +24,10 @@
 <div class="alert success">Задача сохранена. Можно сразу <a href="/new"><strong>создать ещё одну</strong></a>.</div>
 {% endif %}
 
+{% if error %}
+<div class="alert">{{ error }}</div>
+{% endif %}
+
 <div class="meta-grid">
   <div><span class="label">Номер идеи</span>{{ format_idea_label(task) }}</div>
   <div><span class="label">Теги</span>

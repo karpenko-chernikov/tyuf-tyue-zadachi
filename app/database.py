@@ -46,7 +46,7 @@ class Base(DeclarativeBase):
     pass
 
 
-def backup_sqlite_db(keep: int = 20) -> Path | None:
+def backup_sqlite_db(keep: int = 5) -> Path | None:
     """Копия локальной SQLite перед работой — чтобы git/сбой не съели данные."""
     if not DATABASE_URL.startswith("sqlite"):
         return None

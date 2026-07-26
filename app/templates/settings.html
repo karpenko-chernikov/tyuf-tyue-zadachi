@@ -53,10 +53,50 @@
 </section>
 
 <section class="card">
+  <h2>Резервные копии</h2>
+  <p class="muted">В Telegram — только TXT (день ниже). На почту — TXT и gzip БД; у каждого адреса своё расписание.</p>
+  <form method="post" action="/settings/backup" class="backup-settings-form">
+    <label>День месяца для TXT в Telegram (1–28)
+      <input type="number" name="monthly_day" min="1" max="28" required value="{{ backup_monthly_day }}">
+    </label>
+    <label>Почта и расписание (по одной строке)
+      <textarea name="emails" rows="4" placeholder="chernikov.nikita@gmail.com | каждый месяц&#10;ilyamartch@gmail.com | 1 апреля">{{ backup_emails }}</textarea>
+    </label>
+    <p class="muted">Примеры: <code>email | каждый месяц</code>, <code>email | 1 апреля</code>, <code>email | yearly | 4-1</code></p>
+    <label class="checkbox-inline">
+      <input type="checkbox" name="send_telegram" value="1" {% if backup_send_telegram %}checked{% endif %}>
+      Отправлять TXT в Telegram
+    </label>
+    <label class="checkbox-inline">
+      <input type="checkbox" name="send_email" value="1" {% if backup_send_email %}checked{% endif %}>
+      Отправлять БД + TXT на почту
+    </label>
+    <button type="submit" class="btn primary">Сохранить расписание</button>
+  </form>
+
+  <p class="muted" style="margin-top:1rem">
+    Telegram: {% if tg_configured %}<strong>настроен</strong>{% else %}не настроен (<code>TELEGRAM_BOT_TOKEN</code> / <code>TELEGRAM_CHAT_ID</code>){% endif %}
+    · SMTP: {% if smtp_configured %}<strong>настроен</strong>{% else %}не настроен (<code>SMTP_HOST</code> / <code>SMTP_USER</code> / <code>SMTP_PASSWORD</code> в <code>.env</code>){% endif %}
+  </p>
+
+  <div class="actions-inline" style="margin-top:0.75rem; flex-wrap:wrap; gap:0.5rem">
+    <form method="post" action="/settings/backup/now">
+      <button type="submit" class="btn primary">Выгрузить сейчас (TG + все адреса)</button>
+    </form>
+    <form method="post" action="/settings/telegram/backup">
+      <button type="submit" class="btn secondary" {% if not tg_configured %}disabled{% endif %}>Только TXT в Telegram</button>
+    </form>
+    <form method="post" action="/settings/backup/email">
+      <button type="submit" class="btn secondary" {% if not smtp_configured %}disabled{% endif %}>Только БД+TXT на почту (все)</button>
+    </form>
+    <a class="btn secondary" href="/settings/backup/db">Скачать БД (.gz)</a>
+  </div>
+</section>
+
+<section class="card">
   <h2>Telegram</h2>
   {% if tg_configured %}
-  <p class="muted">Бот настроен: уведомления о новых задачах в рабочий чат; раз в месяц TXT-экспорт (день {{ tg_monthly_day }}). Полный файл БД в Telegram не шлётся.</p>
-  <p class="muted">Бот в две стороны: задача на сайте → чат идей; идея в чате → превью в личке → «Сохранить». Краткая инструкция: <code>docs/telegram-bot.md</code>. Нужны /start у бота и Privacy Disable в BotFather.</p>
+  <p class="muted">Бот настроен: уведомления о новых задачах в рабочий чат. Краткая инструкция: <code>docs/telegram-bot.md</code>. Нужны /start у бота и Privacy Disable в BotFather.</p>
   {% if app_base_url %}
   <p class="muted">Ссылки: <code>{{ app_base_url }}</code></p>
   {% else %}
@@ -65,9 +105,6 @@
   <div class="actions-inline">
     <form method="post" action="/settings/telegram/test">
       <button type="submit" class="btn secondary">Тестовое сообщение</button>
-    </form>
-    <form method="post" action="/settings/telegram/backup">
-      <button type="submit" class="btn secondary">Отправить TXT сейчас</button>
     </form>
   </div>
   {% else %}
