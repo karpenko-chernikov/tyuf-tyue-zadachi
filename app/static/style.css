@@ -214,23 +214,26 @@ a:hover { text-decoration: underline; }
   white-space: normal;
   word-break: break-word;
 }
-.table-tasks .status-pill {
-  white-space: normal;
-  line-height: 1.25;
-  text-align: left;
+.table-tasks .status-pill,
+.table-tasks .author-pill,
+.table-tasks .board-chip {
+  white-space: nowrap;
+  line-height: 1;
+  height: 1.75rem;
+  padding: 0 10px;
+  box-sizing: border-box;
+  justify-content: center;
+  align-items: center;
 }
 .table-tasks .author-pill {
-  max-width: none;
-  overflow: visible;
-  text-overflow: unset;
-  white-space: normal;
-  line-height: 1.25;
-  text-align: left;
-  height: auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .table-tasks .tag-chips {
   flex-wrap: wrap;
   gap: 4px;
+  align-items: center;
 }
 .table th, .table td {
   padding: 13px 14px;
@@ -299,15 +302,21 @@ a:hover { text-decoration: underline; }
 
 
 .idea-badge {
-  display: inline-block;
-  padding: 4px 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 1.75rem;
+  padding: 0 9px;
   border-radius: 8px;
   background: var(--brand-soft);
   color: var(--brand);
   font-weight: 700;
   font-size: 13px;
   letter-spacing: -0.01em;
+  line-height: 1;
   white-space: nowrap;
+  vertical-align: middle;
 }
 .idea-badge-empty {
   background: #eef0ef;
@@ -337,13 +346,17 @@ a:hover { text-decoration: underline; }
 .author-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 1.75rem;
   max-width: 100%;
-  padding: 5px 12px;
+  padding: 0 10px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 /* Авторы — 18 явно разных цветов по кругу оттенков */
@@ -377,8 +390,14 @@ a:hover { text-decoration: underline; }
 .tag-kapitanka { background: #e8dff3; color: #553a70; }
 .tag-sf4 { background: #fff3cd; color: #6b5200; }
 .tag-sf3 { background: #ffe8cc; color: #6b3d00; }
-.tag-invent_yourself { background: #fde2e8; color: #6b2040; }
-.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-invent_yourself {
+  background: #fde2e8;
+  color: #6b2040;
+  letter-spacing: 0;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .tag-checkboxes { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; }
 .tag-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-weight: 500; }
 .tag-check input { margin: 0; }
@@ -757,7 +776,8 @@ textarea { resize: vertical; }
 }
 .kanban-card-meta .author-pill {
   font-size: 11px;
-  padding: 3px 8px;
+  padding: 0 8px;
+  height: 1.5rem;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

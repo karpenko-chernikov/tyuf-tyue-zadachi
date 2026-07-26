@@ -776,6 +776,7 @@ def task_list(
             "sort": sort_key,
             "order": active_order,
             "status_labels": STATUS_LABELS,
+            "status_short": STATUS_SHORT_LABELS,
             "format_igraetsya": format_igraetsya,
             "format_idea_label": format_idea_label,
         },

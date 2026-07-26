@@ -92,7 +92,7 @@
       </td>
       <td>
         <span class="status-pill status-{{ status_pill_class(task.status) }}">
-          {{ status_labels.get(task.status, task.status) }}
+          {{ status_short.get(task.status, status_labels.get(task.status, task.status)) }}
         </span>
         {% set ig = format_igraetsya(task) %}
         {% if ig %}<div class="task-igraetsya">{{ ig }}</div>{% endif %}
