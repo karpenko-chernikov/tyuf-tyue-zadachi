@@ -7,23 +7,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=30">
+  <link rel="stylesheet" href="/static/style.css?v=32">
 </head>
-<body>
+<body class="{% if not user %}body-login{% endif %}">
   {% if user %}
+  {% set path = request.url.path %}
   <header class="header">
     <div class="header-inner">
       <a href="/kanban" class="logo">Задачи <span>ТЮФ / ТЮЕ</span></a>
-      <nav>
-        <a href="/kanban">Канбан</a>
-        <a href="/">Список</a>
-        <a href="/new">Добавить</a>
-        <a href="/import">Импорт</a>
-        <a href="/export/txt" title="Полная выгрузка">TXT</a>
-        <a href="/export/csv" title="Полная выгрузка">CSV</a>
-        <a href="/settings">Настройки</a>
+      <nav class="nav-primary">
+        <a href="/kanban" class="{% if path.startswith('/kanban') %}is-active{% endif %}">Канбан</a>
+        <a href="/" class="{% if path == '/' %}is-active{% endif %}">Список</a>
+        <a href="/new" class="{% if path == '/new' %}is-active{% endif %}">Добавить</a>
+        <a href="/import" class="{% if path.startswith('/import') %}is-active{% endif %}">Импорт</a>
+        <a href="/settings" class="{% if path.startswith('/settings') %}is-active{% endif %}">Настройки</a>
       </nav>
-      <div class="user">{{ user }} · <a href="/logout">Выйти</a></div>
+      <div class="user-chip">
+        <span class="user-chip-name">{{ user }}</span>
+        <a href="/logout" class="user-chip-out">Выйти</a>
+      </div>
     </div>
   </header>
   {% endif %}

@@ -9,7 +9,7 @@
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
 {% if success %}<div class="alert success">{{ success }}</div>{% endif %}
 
-<section class="card">
+<section class="card settings-section">
   <h2>Смена пароля</h2>
   <p class="muted">{{ user }} · <code>{{ username }}</code></p>
   <form method="post" action="/settings/password">
@@ -26,7 +26,7 @@
   </form>
 </section>
 
-<section class="card">
+<section class="card settings-section">
   <h2>Теги</h2>
   <ul class="tag-admin-list">
     {% for t in all_tags %}
@@ -52,48 +52,96 @@
   </form>
 </section>
 
-<section class="card">
+<section class="card settings-section">
   <h2>Резервные копии</h2>
-  <p class="muted">В Telegram — только TXT (день ниже). На почту — TXT и gzip БД; у каждого адреса своё расписание.</p>
+  <p class="muted">База данных — полная копия сайта: задачи, комментарии, файлы, история. На почту она уходит сжатой (.db.gz). В чат — только текстовый список.</p>
+
   <form method="post" action="/settings/backup" class="backup-settings-form">
-    <label>День месяца для TXT в Telegram (1–28)
-      <input type="number" name="monthly_day" min="1" max="28" required value="{{ backup_monthly_day }}">
-    </label>
-    <label>Почта и расписание (по одной строке)
-      <textarea name="emails" rows="4" placeholder="chernikov.nikita@gmail.com | каждый месяц&#10;ilyamartch@gmail.com | 1 апреля">{{ backup_emails }}</textarea>
-    </label>
-    <p class="muted">Примеры: <code>email | каждый месяц</code>, <code>email | 1 апреля</code>, <code>email | yearly | 4-1</code></p>
-    <label class="checkbox-inline">
-      <input type="checkbox" name="send_telegram" value="1" {% if backup_send_telegram %}checked{% endif %}>
-      Отправлять TXT в Telegram
-    </label>
-    <label class="checkbox-inline">
-      <input type="checkbox" name="send_email" value="1" {% if backup_send_email %}checked{% endif %}>
-      Отправлять БД + TXT на почту
-    </label>
-    <button type="submit" class="btn primary">Сохранить расписание</button>
+    <div class="table-wrap backup-table-wrap">
+      <table class="table backup-schedule-table">
+        <thead>
+          <tr>
+            <th>Куда</th>
+            <th>Когда</th>
+            <th>Что отправляем</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Чат Telegram</td>
+            <td>
+              <label class="backup-inline-label">каждый месяц,
+                <input type="number" name="monthly_day" min="1" max="28" required
+                       value="{{ backup_monthly_day }}" class="backup-day-input">
+                числа
+              </label>
+            </td>
+            <td>текстовый список задач</td>
+          </tr>
+          {% for r in backup_recipients %}
+          <tr>
+            <td>
+              <input type="email" name="email_{{ loop.index0 }}" value="{{ r.email }}"
+                     placeholder="адрес@почта.ru" class="backup-email-input">
+            </td>
+            <td>
+              <div class="backup-when">
+                <select name="freq_{{ loop.index0 }}" class="backup-freq">
+                  <option value="monthly" {% if r.freq == 'monthly' %}selected{% endif %}>каждый месяц</option>
+                  <option value="yearly" {% if r.freq == 'yearly' %}selected{% endif %}>раз в год</option>
+                </select>
+                <label class="backup-inline-label">день
+                  <input type="number" name="day_{{ loop.index0 }}" min="1" max="28"
+                         value="{{ r.day }}" class="backup-day-input">
+                </label>
+                <select name="month_{{ loop.index0 }}" class="backup-month"
+                        {% if r.freq != 'yearly' %}disabled{% endif %}>
+                  {% for num, name in backup_month_names %}
+                  <option value="{{ num }}" {% if r.month == num %}selected{% endif %}>{{ name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </td>
+            <td>список задач и база данных</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn primary" style="margin-top:12px">Сохранить</button>
   </form>
 
   <p class="muted" style="margin-top:1rem">
-    Telegram: {% if tg_configured %}<strong>настроен</strong>{% else %}не настроен (<code>TELEGRAM_BOT_TOKEN</code> / <code>TELEGRAM_CHAT_ID</code>){% endif %}
-    · SMTP: {% if smtp_configured %}<strong>настроен</strong>{% else %}не настроен (<code>SMTP_HOST</code> / <code>SMTP_USER</code> / <code>SMTP_PASSWORD</code> в <code>.env</code>){% endif %}
+    Чат: {% if tg_configured %}<strong>готов</strong>{% else %}не настроен{% endif %}
+    · Почта: {% if smtp_configured %}<strong>готова</strong>{% else %}не настроена (SMTP на сервере){% endif %}
   </p>
 
   <div class="actions-inline" style="margin-top:0.75rem; flex-wrap:wrap; gap:0.5rem">
     <form method="post" action="/settings/backup/now">
-      <button type="submit" class="btn primary">Выгрузить сейчас (TG + все адреса)</button>
+      <button type="submit" class="btn primary">Отправить всё сейчас</button>
     </form>
     <form method="post" action="/settings/telegram/backup">
-      <button type="submit" class="btn secondary" {% if not tg_configured %}disabled{% endif %}>Только TXT в Telegram</button>
+      <button type="submit" class="btn secondary" {% if not tg_configured %}disabled{% endif %}>Только в чат</button>
     </form>
     <form method="post" action="/settings/backup/email">
-      <button type="submit" class="btn secondary" {% if not smtp_configured %}disabled{% endif %}>Только БД+TXT на почту (все)</button>
+      <button type="submit" class="btn secondary" {% if not smtp_configured %}disabled{% endif %}>Только на почту</button>
     </form>
-    <a class="btn secondary" href="/settings/backup/db">Скачать БД (.gz)</a>
+    <a class="btn secondary" href="/settings/backup/db">Скачать базу</a>
   </div>
 </section>
+<script>
+document.querySelectorAll('.backup-freq').forEach((sel) => {
+  const sync = () => {
+    const row = sel.closest('tr');
+    const month = row && row.querySelector('.backup-month');
+    if (month) month.disabled = sel.value !== 'yearly';
+  };
+  sel.addEventListener('change', sync);
+  sync();
+});
+</script>
 
-<section class="card">
+<section class="card settings-section">
   <h2>Telegram</h2>
   {% if tg_configured %}
   <p class="muted">Бот настроен: уведомления о новых задачах в рабочий чат. Краткая инструкция: <code>docs/telegram-bot.md</code>. Нужны /start у бота и Privacy Disable в BotFather.</p>
@@ -112,7 +160,7 @@
   {% endif %}
 </section>
 
-<section class="card">
+<section class="card settings-section">
   <h2>Логины</h2>
   <ul>
     <li><code>nikita</code> — Никита</li>

@@ -2,11 +2,11 @@
 {% from "macros.html" import file_picker, attachment_list, author_field with context %}
 {% block title %}{{ format_idea_title(task) }}{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>
-    {{ format_idea_title(task) }}
-    {% if task.title %}<span class="subtitle">{{ task.title }}</span>{% endif %}
-  </h1>
+<div class="page-header detail-hero">
+  <div class="detail-hero-text">
+    <p class="detail-idea-num">{% if task.idea_number is none %}Без номера идеи{% else %}{{ format_idea_label(task) }}{% endif %}</p>
+    <h1>{% if task.title %}{{ task.title }}{% else %}{{ format_idea_title(task) }}{% endif %}</h1>
+  </div>
   <div class="actions-inline">
     <a href="/new" class="btn primary">+ Создать ещё</a>
     <a href="/tasks/{{ task.id }}/edit" class="btn secondary">Редактировать</a>
@@ -28,8 +28,7 @@
 <div class="alert">{{ error }}</div>
 {% endif %}
 
-<div class="meta-grid">
-  <div><span class="label">Номер идеи</span>{{ format_idea_label(task) }}</div>
+<div class="meta-grid detail-meta">
   <div><span class="label">Теги</span>
     <div class="tag-chips">
       {% for t in task.tags|sort(attribute='sort_order') %}
@@ -37,7 +36,9 @@
       {% else %}—{% endfor %}
     </div>
   </div>
-  <div><span class="label">Статус</span>{{ status_labels.get(task.status, task.status) }}</div>
+  <div><span class="label">Статус</span>
+    <span class="status-pill status-{{ status_pill_class(task.status) }}">{{ status_labels.get(task.status, task.status) }}</span>
+  </div>
   <div><span class="label">Дата в Telegram</span>{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</div>
   <div><span class="label">Автор</span>
     {% if task.author %}
@@ -49,9 +50,9 @@
   {% if ig %}<div class="full"><span class="label">Играется</span>{{ ig }}</div>{% endif %}
 </div>
 
-<section class="card">
+<section class="card card-condition">
   <h2>Условие</h2>
-  <div class="pre-wrap">{{ task.condition or '—' }}</div>
+  <div class="pre-wrap condition-body">{{ task.condition or '—' }}</div>
   {{ attachment_list(task_files) }}
 </section>
 

@@ -358,9 +358,23 @@ def logout(request: Request):
 
 
 def _settings_ctx(request: Request, db: Session, **extra):
-    from app.backup_config import format_recipients_text
-
     cfg = load_backup_config()
+    recipients_ui = []
+    for rec in cfg["recipients"]:
+        months = rec.get("months", "all")
+        yearly = isinstance(months, list) and months != "all" and months
+        recipients_ui.append(
+            {
+                "email": rec["email"],
+                "day": rec.get("day", 1),
+                "freq": "yearly" if yearly else "monthly",
+                "month": (months[0] if yearly else 4),
+            }
+        )
+    while len(recipients_ui) < 2:
+        recipients_ui.append(
+            {"email": "", "day": 1, "freq": "monthly", "month": 4}
+        )
     ctx = {
         "user": login_required(request),
         "username": request.session.get("username", ""),
@@ -369,9 +383,21 @@ def _settings_ctx(request: Request, db: Session, **extra):
         "tg_monthly_day": telegram_monthly_day(),
         "smtp_configured": smtp_configured(),
         "backup_monthly_day": cfg["monthly_day"],
-        "backup_emails": format_recipients_text(cfg["recipients"]),
-        "backup_send_telegram": cfg["send_telegram"],
-        "backup_send_email": cfg["send_email"],
+        "backup_recipients": recipients_ui,
+        "backup_month_names": [
+            (1, "января"),
+            (2, "февраля"),
+            (3, "марта"),
+            (4, "апреля"),
+            (5, "мая"),
+            (6, "июня"),
+            (7, "июля"),
+            (8, "августа"),
+            (9, "сентября"),
+            (10, "октября"),
+            (11, "ноября"),
+            (12, "декабря"),
+        ],
         "app_base_url": app_base_url(),
         "error": None,
         "success": None,
@@ -449,23 +475,43 @@ def settings_telegram_backup(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/settings/backup")
-def settings_backup_save(
+async def settings_backup_save(
     request: Request,
     db: Session = Depends(get_db),
     monthly_day: int = Form(1),
-    emails: str = Form(""),
-    send_telegram: str = Form(""),
-    send_email: str = Form(""),
 ):
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+
+    form = await request.form()
+    recipients: list[dict] = []
+    for i in range(8):
+        email = (form.get(f"email_{i}") or "").strip()
+        if not email or "@" not in email:
+            continue
+        freq = (form.get(f"freq_{i}") or "monthly").strip()
+        try:
+            day = int(form.get(f"day_{i}") or 1)
+        except (TypeError, ValueError):
+            day = 1
+        day = max(1, min(28, day))
+        if freq == "yearly":
+            try:
+                month = int(form.get(f"month_{i}") or 4)
+            except (TypeError, ValueError):
+                month = 4
+            month = max(1, min(12, month))
+            recipients.append({"email": email, "day": day, "months": [month]})
+        else:
+            recipients.append({"email": email, "day": day, "months": "all"})
+
     try:
         cfg = save_backup_config(
             monthly_day=monthly_day,
-            recipients=emails,
-            send_telegram=send_telegram in ("1", "on", "true", "yes"),
-            send_email=send_email in ("1", "on", "true", "yes"),
+            recipients=recipients,
+            send_telegram=True,
+            send_email=True,
         )
     except (TypeError, ValueError) as e:
         return templates.TemplateResponse(
@@ -474,18 +520,15 @@ def settings_backup_save(
             _settings_ctx(request, db, error=str(e)),
             status_code=400,
         )
-    from app.backup_config import format_recipients_text
 
+    n_mail = len(cfg["recipients"])
     return templates.TemplateResponse(
         request,
         "settings.html",
         _settings_ctx(
             request,
             db,
-            success=(
-                f"Сохранено: TG — {cfg['monthly_day']}-го числа · "
-                f"почта:\n{format_recipients_text(cfg['recipients'])}"
-            ),
+            success=f"Сохранено: чат — {cfg['monthly_day']}-го числа, почта — {n_mail} адрес(а)",
         ),
     )
 

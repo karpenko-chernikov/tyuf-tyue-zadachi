@@ -18,35 +18,37 @@
   <a class="btn primary" href="/new">+ Добавить задачу</a>
 </div>
 
-<form class="filters" method="get">
+<form class="filters filters-panel" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Поиск по тексту, автору, ссылкам">
-  <select name="tag">
-    <option value="">Все теги</option>
-    {% for t in all_tags %}
-    <option value="{{ t.slug }}" {% if tag == t.slug %}selected{% endif %}>{{ t.name }}</option>
-    {% endfor %}
-  </select>
-  <select name="status">
-    <option value="">Все статусы</option>
-    {% for val, label in status_labels.items() %}
-    <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
-  <select name="author">
-    <option value="">Все авторы</option>
-    {% for a in authors %}
-    <option value="{{ a }}" {% if author_filter == a %}selected{% endif %}>{{ a }}</option>
-    {% endfor %}
-  </select>
-  {% if sort %}
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <input type="hidden" name="order" value="{{ order }}">
-  {% endif %}
-  <button type="submit" class="btn secondary">Фильтр</button>
-  <a href="/" class="btn secondary">Сбросить</a>
-  <span class="filters-export muted">Выгрузка по фильтру:</span>
-  <a class="btn secondary" href="/export/txt?{{ qs_base }}">TXT</a>
-  <a class="btn secondary" href="/export/csv?{{ qs_base }}">CSV</a>
+  <div class="filters-row">
+    <select name="tag">
+      <option value="">Все теги</option>
+      {% for t in all_tags %}
+      <option value="{{ t.slug }}" {% if tag == t.slug %}selected{% endif %}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="status">
+      <option value="">Все статусы</option>
+      {% for val, label in status_labels.items() %}
+      <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="author">
+      <option value="">Все авторы</option>
+      {% for a in authors %}
+      <option value="{{ a }}" {% if author_filter == a %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+    {% if sort %}
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="order" value="{{ order }}">
+    {% endif %}
+    <button type="submit" class="btn secondary">Фильтр</button>
+    <a href="/" class="btn secondary">Сбросить</a>
+    <span class="filters-export muted">Выгрузка:</span>
+    <a class="btn secondary" href="/export/txt?{{ qs_base }}">TXT</a>
+    <a class="btn secondary" href="/export/csv?{{ qs_base }}">CSV</a>
+  </div>
 </form>
 
 {% if tasks %}
