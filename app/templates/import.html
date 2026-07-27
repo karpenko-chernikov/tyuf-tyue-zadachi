@@ -12,13 +12,15 @@
 <section class="card">
   <h2>1. Источник</h2>
   <p class="muted">
-    Локальный экспорт из <code>data/imports/</code> или загрузите <code>result.json</code>.
-    Разбор идёт в фоне — сайт не зависает.
+    Лучше: папка экспорта на сервере в <code>data/imports/</code> (тогда есть фото/видео).
+    Или загрузите <code>result.json</code> — разбор в фоне, сайт не зависает.
+    Очень большой JSON через браузер может долго грузиться (Cloudflare).
   </p>
-  <form method="post" action="/import" enctype="multipart/form-data" class="import-upload">
+  <form method="post" action="/import" enctype="multipart/form-data" class="import-upload" id="import-parse-form">
     {% if local_exports %}
     <label>Локальный экспорт
       <select name="local_export">
+        <option value="">— не использовать —</option>
         {% for ex in local_exports %}
         <option value="{{ ex.path }}">{{ ex.name }}</option>
         {% endfor %}
@@ -35,8 +37,20 @@
     <label>Или JSON текстом
       <textarea name="paste" rows="4" placeholder='{"chats":{"list":[...]}}'></textarea>
     </label>
-    <button type="submit" class="btn primary">Разобрать</button>
+    <button type="submit" class="btn primary" id="import-parse-btn">Разобрать</button>
+    <p class="muted" id="import-parse-hint" hidden>Загружаем на сервер… можно подождать, страница сама перейдёт к прогрессу.</p>
   </form>
+  <script>
+  document.getElementById('import-parse-form')?.addEventListener('submit', () => {
+    const btn = document.getElementById('import-parse-btn');
+    const hint = document.getElementById('import-parse-hint');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Загружаем…';
+    }
+    if (hint) hint.hidden = false;
+  });
+  </script>
   {% if chats %}
   <p class="muted">Чаты в файле:
     {% for c in chats %}{{ c.name }} ({{ c.messages }}){% if not loop.last %}; {% endif %}{% endfor %}
@@ -477,6 +491,12 @@ document.getElementById('import-commit-form')?.addEventListener('submit', (e) =>
   }
   if (!confirm(`Сохранить в базу ${reviewedRows.length} обработанных строк? Остальные не трогаем.`)) {
     e.preventDefault();
+    return;
+  }
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Отправляем…';
   }
 });
 

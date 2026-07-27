@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import shutil
 import threading
 import uuid
 from datetime import datetime
@@ -148,8 +149,38 @@ def _ensure_worker() -> None:
         logger.info("Import jobs worker started")
 
 
+def cleanup_old_jobs(*, keep_days: int = 7) -> int:
+    """Удаляет каталоги job’ов старше keep_days. Возвращает число удалённых."""
+    root = jobs_root()
+    if not root.is_dir():
+        return 0
+    cutoff = datetime.utcnow().timestamp() - keep_days * 86400
+    removed = 0
+    for path in root.iterdir():
+        if not path.is_dir():
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            continue
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+        except OSError:
+            logger.exception("Failed to remove import job dir %s", path)
+    if removed:
+        logger.info("Removed %s old import job dirs", removed)
+    return removed
+
+
 def start_import_jobs_worker() -> None:
     """Вызвать из lifespan приложения."""
+    try:
+        cleanup_old_jobs()
+    except Exception:
+        logger.exception("Import jobs cleanup failed")
     _ensure_worker()
 
 

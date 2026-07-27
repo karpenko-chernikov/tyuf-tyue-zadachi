@@ -38,7 +38,7 @@ Server-rendered приложение на FastAPI:
 | БД по умолчанию | SQLite (`data/zadachi.db`) |
 | Сессии | cookie, `SessionMiddleware` |
 | Канбан (UI) | SortableJS → `POST /api/tasks/{id}/status` |
-| Импорт | `tg_import.py` + каталог `data/imports/` |
+| Импорт | `tg_import.py` + `import_jobs.py` (фон) + `data/imports/` |
 | Уведомления | Bot API (`httpx`), фоновые потоки |
 | Деплой | Docker (`python:3.12-slim`), том `data/` |
 
@@ -112,6 +112,7 @@ app/
   tags.py           сид тегов, хелперы канбана, миграция с naznachenie
   telegram_bot.py   исходящие уведомления и ежемесячный TXT
   telegram_inbox.py входящие идеи/комментарии из лички бота
+  import_jobs.py    фоновый разбор/сохранение импорта
   tg_import.py      разбор экспорта Telegram Desktop
   files.py          загрузка и отдача вложений
   history.py        журнал изменений
