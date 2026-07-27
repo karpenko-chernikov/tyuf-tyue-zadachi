@@ -402,13 +402,19 @@ def find_local_export_dirs() -> list[Path]:
     return dirs
 
 
-def read_local_export_json(export_dir: Path) -> tuple[str, Path]:
-    """Читает JSON из папки экспорта; предпочитает result_ideas.json."""
+def find_local_export_json_path(export_dir: Path) -> Path:
+    """Путь к JSON в папке экспорта без чтения содержимого в память."""
     for name in ("result_ideas.json", "result.json"):
         path = export_dir / name
         if path.is_file():
-            return path.read_text(encoding="utf-8-sig"), path
+            return path
     raise FileNotFoundError(f"В {export_dir} нет result.json")
+
+
+def read_local_export_json(export_dir: Path) -> tuple[str, Path]:
+    """Читает JSON из папки экспорта; предпочитает result_ideas.json."""
+    path = find_local_export_json_path(export_dir)
+    return path.read_text(encoding="utf-8-sig"), path
 
 
 def _norm_import_title(value: str | None) -> str:

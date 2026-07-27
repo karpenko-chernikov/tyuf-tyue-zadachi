@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Импорт…{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Импорт из Telegram</h1>
+  <a href="/import" class="btn secondary">← Назад</a>
+</div>
+
+<section class="card import-job-card">
+  <h2 id="import-job-title">
+    {% if job.kind == 'commit' %}Сохраняем…{% else %}Разбираем экспорт…{% endif %}
+  </h2>
+  <p class="muted" id="import-job-message">{{ job.message }}</p>
+  <div class="import-progress-bar" aria-hidden="true">
+    <div class="import-progress-fill" id="import-job-fill" style="width: {{ job.progress }}%"></div>
+  </div>
+  <p class="muted" id="import-job-pct">{{ job.progress }}%</p>
+  <p class="muted">Можно открыть другие страницы — импорт идёт в фоне. Эта страница обновится сама.</p>
+</section>
+
+<script>
+(function () {
+  const jobId = {{ job_id|tojson }};
+  const fill = document.getElementById('import-job-fill');
+  const msg = document.getElementById('import-job-message');
+  const pct = document.getElementById('import-job-pct');
+  const title = document.getElementById('import-job-title');
+
+  async function tick() {
+    try {
+      const r = await fetch('/import/job/' + jobId + '/status', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (fill) fill.style.width = (data.progress || 0) + '%';
+      if (pct) pct.textContent = (data.progress || 0) + '%';
+      if (msg) msg.textContent = data.message || '';
+      if (title) {
+        title.textContent = data.kind === 'commit'
+          ? (data.status === 'done' ? 'Сохранено' : 'Сохраняем…')
+          : (data.status === 'done' ? 'Разбор готов' : 'Разбираем экспорт…');
+      }
+      if (data.status === 'done' || data.status === 'error') {
+        window.location.reload();
+        return;
+      }
+    } catch (e) { /* ignore transient */ }
+    setTimeout(tick, 1500);
+  }
+  setTimeout(tick, 1200);
+})();
+</script>
+{% endblock %}

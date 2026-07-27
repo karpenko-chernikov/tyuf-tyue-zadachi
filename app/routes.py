@@ -2,17 +2,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
+import json
 import re
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import change_password, login_required
-from app.database import SessionLocal, backup_sqlite_db, get_db
+from app.database import SessionLocal, get_db
 from app.enums import (
     AUTHORS,
     DEFAULT_COMMENT_AUTHOR,
@@ -69,10 +70,21 @@ from app.telegram_bot import (
 )
 from app.backup_config import load_backup_config, save_backup_config
 from app.mail_backup import smtp_configured
+from app.import_jobs import (
+    COMMIT_CHUNK,
+    MAX_JSON_BYTES,
+    create_job,
+    enqueue,
+    load_job,
+    load_rows,
+    payload_path_for,
+    public_status,
+    save_job,
+    source_json_path,
+)
 from app.tg_import import (
     find_local_export_dirs,
-    parse_telegram_export,
-    read_local_export_json,
+    find_local_export_json_path,
 )
 from app.utils import (
     attach_idea_occurrences,
@@ -96,6 +108,11 @@ templates.env.globals["status_pill_class"] = status_pill_class
 templates.env.globals["format_igraetsya"] = format_igraetsya
 templates.env.globals["format_idea_label"] = format_idea_label
 templates.env.globals["format_idea_title"] = format_idea_title
+
+
+@router.get("/health")
+def health():
+    return PlainTextResponse("ok")
 
 
 def _uploads_from_form_list(raw) -> list[UploadFile]:
@@ -1851,7 +1868,31 @@ def import_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "import.html", _import_page_ctx(db, user))
 
 
-@router.post("/import", response_class=HTMLResponse)
+async def _stream_upload_to_path(upload, dest: Path, *, max_bytes: int = MAX_JSON_BYTES) -> int:
+    """Пишет UploadFile на диск чанками. Возвращает размер. Кидает ValueError при переполнении."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    chunk_size = 1024 * 1024
+    with dest.open("wb") as out:
+        while True:
+            chunk = await upload.read(chunk_size)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > max_bytes:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Файл больше {max_bytes // (1024 * 1024)} МБ — слишком большой для импорта"
+                )
+            out.write(chunk)
+    if written <= 0:
+        dest.unlink(missing_ok=True)
+        raise ValueError("Пустой файл экспорта")
+    return written
+
+
+@router.post("/import")
 async def import_parse(
     request: Request,
     db: Session = Depends(get_db),
@@ -1859,85 +1900,418 @@ async def import_parse(
     local_export: str = Form(""),
     chat_name: str = Form(""),
 ):
+    """Принимает источник и сразу уходит в фоновый разбор — HTTP не ждёт парсинг."""
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    error = None
-    rows = None
-    chats_meta = None
-    export_root: str | None = None
     chosen_chat = (chat_name or "").strip() or None
-    try:
-        form = await request.form()
-        upload = form.get("export_file")
-        payload: str | bytes | None = None
-        filename = getattr(upload, "filename", None) if upload is not None else None
-        if filename and callable(getattr(upload, "read", None)):
-            payload = await upload.read()
+    form = await request.form()
+    upload = form.get("export_file")
+    filename = getattr(upload, "filename", None) if upload is not None else None
+    local_path = (local_export or "").strip()
 
-        local_path = (local_export or "").strip()
-        if not payload and local_path:
+    job = create_job(kind="parse", user=user, chat_name=chosen_chat)
+    job_id = job["id"]
+
+    try:
+        if filename and callable(getattr(upload, "read", None)):
+            dest = source_json_path(job_id)
+            await _stream_upload_to_path(upload, dest)
+            job["source"] = {"type": "file", "path": str(dest)}
+            job["export_root"] = None
+        elif local_path:
             export_dir = Path(local_path)
             if not export_dir.is_dir():
                 raise ValueError(f"Папка экспорта не найдена: {local_path}")
-            payload, _json_path = read_local_export_json(export_dir)
-            export_root = str(export_dir.resolve())
-
-        if not payload and paste.strip():
-            payload = paste.strip()
-
-        if not payload:
-            # авто: последняя папка в data/imports
+            json_path = find_local_export_json_path(export_dir)
+            job["source"] = {
+                "type": "local",
+                "export_root": str(export_dir.resolve()),
+                "json_path": str(json_path.resolve()),
+            }
+            job["export_root"] = str(export_dir.resolve())
+        elif paste.strip():
+            dest = source_json_path(job_id)
+            dest.write_text(paste.strip(), encoding="utf-8")
+            job["source"] = {"type": "paste", "path": str(dest)}
+            job["export_root"] = None
+        else:
             dirs = find_local_export_dirs()
-            if dirs:
-                payload, _ = read_local_export_json(dirs[0])
-                export_root = str(dirs[0].resolve())
-            else:
-                raise ValueError("Загрузите result.json или укажите папку экспорта в data/imports")
-
-        rows, chats, synced_msg_ids = parse_telegram_export(
-            payload,
-            existing_by_minute=_existing_tasks_by_minute(db),
-            processed_msg_ids=_processed_import_msg_ids(db),
-            existing_comment_keys=_existing_comment_keys(db),
-            chat_name=chosen_chat,
-        )
-        # Задачи уже в БД, а таблица обработанных пуста (типично на новом сервере) —
-        # запоминаем совпавшие msg_id, чтобы следующий разбор их не показывал.
-        if synced_msg_ids:
-            for mid in synced_msg_ids:
-                _mark_import_msg_processed(db, mid, "synced")
-            db.commit()
-        chats_meta = [
-            {"name": c.get("name"), "messages": len(c.get("messages") or [])} for c in chats
-        ]
-        if chosen_chat is None and chats_meta:
-            # зафиксируем фактически выбранный чат
-            from app.tg_import import pick_chat
-
-            chosen_chat = pick_chat(chats).get("name")
-        if not rows:
-            raise ValueError(
-                "Новых сообщений нет — всё уже в базе или отмечено обработанным при прошлых импортах"
-            )
+            if not dirs:
+                raise ValueError(
+                    "Загрузите result.json или укажите папку экспорта в data/imports"
+                )
+            export_dir = dirs[0]
+            json_path = find_local_export_json_path(export_dir)
+            job["source"] = {
+                "type": "local",
+                "export_root": str(export_dir.resolve()),
+                "json_path": str(json_path.resolve()),
+            }
+            job["export_root"] = str(export_dir.resolve())
     except Exception as e:
-        error = str(e)
+        job["status"] = "error"
+        job["error"] = str(e)
+        save_job(job)
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(db, user, error=str(e)),
+            status_code=400,
+        )
 
+    job["message"] = "В очереди на разбор…"
+    save_job(job)
+    enqueue(job_id)
+    return RedirectResponse(f"/import/job/{job_id}", status_code=303)
+
+
+@router.get("/import/job/{job_id}", response_class=HTMLResponse)
+def import_job_page(request: Request, job_id: str, db: Session = Depends(get_db)):
+    user = login_required(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    job = load_job(job_id)
+    if not job:
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(db, user, error="Задача импорта не найдена"),
+            status_code=404,
+        )
+
+    status = job.get("status")
+    kind = job.get("kind")
+
+    # Разбор готов — показываем таблицу проверки
+    if kind == "parse" and status == "done":
+        rows = load_rows(job_id)
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(
+                db,
+                user,
+                rows=rows,
+                export_root=job.get("export_root"),
+                chat_name=job.get("chat_name"),
+                chats=job.get("chats"),
+                parse_job_id=job_id,
+            ),
+        )
+
+    # Сохранение готово — сводка
+    if kind == "commit" and status == "done":
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(db, user, success=job.get("success") or "Сохранено"),
+        )
+
+    # Ошибка
+    if status == "error":
+        return templates.TemplateResponse(
+            request,
+            "import.html",
+            _import_page_ctx(
+                db,
+                user,
+                error=job.get("error") or "Ошибка импорта",
+                chats=job.get("chats"),
+                chat_name=job.get("chat_name"),
+                export_root=job.get("export_root"),
+            ),
+            status_code=400,
+        )
+
+    # В процессе
     return templates.TemplateResponse(
         request,
-        "import.html",
-        _import_page_ctx(
-            db,
-            user,
-            rows=[r.to_dict() for r in rows] if rows else None,
-            error=error,
-            export_root=export_root,
-            chat_name=chosen_chat,
-            chats=chats_meta,
-        ),
-        status_code=400 if error else 200,
+        "import_job.html",
+        {
+            "user": user,
+            "job": public_status(job),
+            "job_id": job_id,
+        },
     )
+
+
+@router.get("/import/job/{job_id}/status")
+def import_job_status(request: Request, job_id: str):
+    user = login_required(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    job = load_job(job_id)
+    if not job:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(public_status(job))
+
+
+def run_import_commit_payload(
+    *,
+    user: str,
+    payload: dict,
+    on_progress=None,
+) -> str:
+    """Сохраняет обработанные строки импорта чанками (фон). Без backup на критическом пути."""
+    rows = payload.get("rows") or []
+    export_root_raw = (payload.get("export_root") or "").strip()
+    export_root = Path(export_root_raw) if export_root_raw else None
+    if export_root and not export_root.is_dir():
+        export_root = None
+
+    reviewed = [r for r in rows if r.get("reviewed")]
+    total = max(len(reviewed), 1)
+    done = 0
+
+    def _progress(message: str) -> None:
+        nonlocal done
+        if on_progress:
+            on_progress(done=done, total=total, message=message)
+
+    created_tasks = 0
+    created_comments = 0
+    attached_files = 0
+    skipped = 0
+    not_reviewed = sum(1 for r in rows if not r.get("reviewed"))
+    draft_to_task: dict[str, int] = {}
+    errors: list[str] = []
+
+    db = SessionLocal()
+    try:
+        # --- идеи ---
+        idea_rows = [
+            (idx, r)
+            for idx, r in enumerate(rows)
+            if r.get("reviewed") and (r.get("kind") or "skip") == "idea"
+        ]
+        skip_rows = [
+            (idx, r)
+            for idx, r in enumerate(rows)
+            if r.get("reviewed") and (r.get("kind") or "skip") == "skip"
+        ]
+
+        for idx, r in skip_rows:
+            skipped += 1
+            msg_id = r.get("msg_id")
+            try:
+                msg_id = int(msg_id) if msg_id is not None and str(msg_id).strip() != "" else None
+            except (TypeError, ValueError):
+                msg_id = None
+            _mark_import_msg_processed(db, msg_id, "skip")
+            done += 1
+            if done % COMMIT_CHUNK == 0:
+                db.commit()
+                _progress(f"Пропуски… {done}/{total}")
+
+        for batch_start in range(0, len(idea_rows), COMMIT_CHUNK):
+            batch = idea_rows[batch_start : batch_start + COMMIT_CHUNK]
+            for idx, r in batch:
+                msg_id = r.get("msg_id")
+                try:
+                    msg_id = int(msg_id) if msg_id is not None and str(msg_id).strip() != "" else None
+                except (TypeError, ValueError):
+                    msg_id = None
+                draft_key = (r.get("draft_key") or "").strip() or f"draft_{idx}"
+                author = normalize_author(
+                    (r.get("author") or "").strip(),
+                    default=DEFAULT_TASK_AUTHOR,
+                )
+                tg_raw = (r.get("telegram_datetime") or "").strip()
+                title = (r.get("title") or "").strip() or None
+                condition = (r.get("condition") or "").strip()
+                sources = (r.get("sources") or "").strip() or None
+                row_tag_slugs = [s.strip() for s in (r.get("tag_slugs") or []) if str(s).strip()]
+                if not row_tag_slugs:
+                    row_tag_slugs = list(DEFAULT_TAG_SLUGS)
+                idea_number_raw = r.get("idea_number")
+                if idea_number_raw is None or str(idea_number_raw).strip() == "":
+                    idea_number_raw = ""
+                else:
+                    idea_number_raw = str(idea_number_raw).strip()
+                try:
+                    idea_number = parse_idea_number_input(idea_number_raw)
+                except ValueError as e:
+                    errors.append(f"Строка {idx + 1}: {e}")
+                    done += 1
+                    continue
+                media_paths = [p.strip() for p in (r.get("media_paths") or []) if str(p).strip()]
+
+                if not title:
+                    errors.append(f"Строка {idx + 1}: у идеи нет названия — пропущена")
+                    done += 1
+                    continue
+                if not condition:
+                    errors.append(f"Строка {idx + 1}: у идеи нет условия — пропущена")
+                    done += 1
+                    continue
+                tg_dt = parse_datetime_local(tg_raw)
+                if not tg_dt:
+                    errors.append(f"Строка {idx + 1}: некорректная дата Telegram — пропущена")
+                    done += 1
+                    continue
+                try:
+                    tg_dt, shifted = _allocate_telegram_datetime(db, tg_dt)
+                except ValueError as e:
+                    errors.append(f"Строка {idx + 1}: {e}")
+                    done += 1
+                    continue
+                if shifted:
+                    errors.append(
+                        f"Строка {idx + 1}: дата занята другой задачей — сохранено как "
+                        f"{tg_dt.strftime('%Y-%m-%d %H:%M')} (+сдвиг на свободную минуту)"
+                    )
+
+                video_url = None
+                if sources:
+                    for u in sources.splitlines():
+                        u = u.strip()
+                        if any(x in u.lower() for x in ("youtube", "youtu.be", "instagram")):
+                            video_url = u
+                            break
+
+                task = Task(
+                    idea_number=idea_number,
+                    title=title,
+                    condition=condition,
+                    author=author,
+                    status=Status.TG.value,
+                    archived=False,
+                    video_url=video_url,
+                    sources=sources,
+                    telegram_datetime=tg_dt,
+                )
+                db.add(task)
+                db.flush()
+                task.tags = tags_by_slugs(db, row_tag_slugs)
+                if not task.tags:
+                    task.tags = tags_by_slugs(db, list(DEFAULT_TAG_SLUGS))
+                record_created(db, task, user)
+                draft_to_task[draft_key] = task.id
+                created_tasks += 1
+                _mark_import_msg_processed(db, msg_id, "idea")
+                idea_skips: list[str] = []
+                attached_files += _attach_import_media(
+                    db,
+                    export_root=export_root,
+                    rel_paths=media_paths,
+                    task_id=task.id,
+                    comment_id=None,
+                    user=user,
+                    skip_notes=idea_skips,
+                )
+                for note in idea_skips:
+                    errors.append(f"Строка {idx + 1}: пропуск файла — {note}")
+                done += 1
+            db.commit()
+            _progress(f"Идеи… {done}/{total}")
+
+        # --- комментарии и медиа ---
+        other_rows = [
+            (idx, r)
+            for idx, r in enumerate(rows)
+            if r.get("reviewed") and (r.get("kind") or "skip") in ("comment", "media")
+        ]
+        for batch_start in range(0, len(other_rows), COMMIT_CHUNK):
+            batch = other_rows[batch_start : batch_start + COMMIT_CHUNK]
+            for idx, r in batch:
+                kind = (r.get("kind") or "skip").strip()
+                msg_id = r.get("msg_id")
+                try:
+                    msg_id = int(msg_id) if msg_id is not None and str(msg_id).strip() != "" else None
+                except (TypeError, ValueError):
+                    msg_id = None
+                text = (r.get("text") or "").strip()
+                author = normalize_author(
+                    (r.get("author") or "").strip(),
+                    default=DEFAULT_COMMENT_AUTHOR,
+                )
+                link_to = (r.get("link_to") or "").strip()
+                media_paths = [p.strip() for p in (r.get("media_paths") or []) if str(p).strip()]
+                task_id = _resolve_link_to_task_id(link_to, draft_to_task, db)
+                if not task_id:
+                    errors.append(f"Строка {idx + 1}: нет привязки к идее — пропущена")
+                    done += 1
+                    continue
+
+                if kind == "media":
+                    media_skips: list[str] = []
+                    n = _attach_import_media(
+                        db,
+                        export_root=export_root,
+                        rel_paths=media_paths,
+                        task_id=task_id,
+                        comment_id=None,
+                        user=user,
+                        skip_notes=media_skips,
+                    )
+                    if n == 0:
+                        detail = (
+                            "; ".join(media_skips)
+                            if media_skips
+                            else "медиафайлы не найдены на диске"
+                        )
+                        errors.append(f"Строка {idx + 1}: {detail}")
+                    else:
+                        _mark_import_msg_processed(db, msg_id, "media")
+                        for note in media_skips:
+                            errors.append(f"Строка {idx + 1}: пропуск файла — {note}")
+                    attached_files += n
+                    done += 1
+                    continue
+
+                if not text and not media_paths:
+                    errors.append(f"Строка {idx + 1}: пустой комментарий — пропущен")
+                    done += 1
+                    continue
+                if not text:
+                    text = "(файл)"
+                comment = Comment(task_id=task_id, text=text, author=author)
+                db.add(comment)
+                db.flush()
+                record_comment_added(db, task_id, user, author, text)
+                created_comments += 1
+                _mark_import_msg_processed(db, msg_id, "comment")
+                comment_skips: list[str] = []
+                attached_files += _attach_import_media(
+                    db,
+                    export_root=export_root,
+                    rel_paths=media_paths,
+                    task_id=task_id,
+                    comment_id=comment.id,
+                    user=user,
+                    skip_notes=comment_skips,
+                )
+                for note in comment_skips:
+                    errors.append(f"Строка {idx + 1}: пропуск файла — {note}")
+                done += 1
+            db.commit()
+            _progress(f"Комментарии… {done}/{total}")
+
+        db.commit()
+    finally:
+        db.close()
+
+    if created_tasks:
+        notify_import_summary(
+            created_tasks=created_tasks,
+            created_comments=created_comments,
+        )
+
+    parts = [
+        f"Создано задач: {created_tasks}",
+        f"комментариев: {created_comments}",
+        f"файлов: {attached_files}",
+        f"явно пропущено: {skipped}",
+        f"не обработано (оставлено): {not_reviewed}",
+    ]
+    success = ". ".join(parts) + "."
+    if errors:
+        success += " Замечания: " + "; ".join(errors[:12])
+        if len(errors) > 12:
+            success += f" … ещё {len(errors) - 12}"
+    return success
 
 
 @router.post("/import/commit")
@@ -1952,9 +2326,6 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
     except (TypeError, ValueError):
         row_count = 0
     export_root_raw = (form.get("export_root") or "").strip()
-    export_root = Path(export_root_raw) if export_root_raw else None
-    if export_root and not export_root.is_dir():
-        export_root = None
 
     if row_count <= 0:
         return templates.TemplateResponse(
@@ -2009,210 +2380,52 @@ async def import_commit(request: Request, db: Session = Depends(get_db)):
             status_code=400,
         )
 
-    backup_sqlite_db()
-
-    created_tasks = 0
-    created_comments = 0
-    attached_files = 0
-    skipped = 0
-    not_reviewed = 0
-    draft_to_task: dict[str, int] = {}
-    errors: list[str] = []
-
+    rows_payload: list[dict] = []
     for i in range(row_count):
-        if not _is_reviewed(i):
-            not_reviewed += 1
-            continue
-        kind = (form.get(f"kind_{i}") or "skip").strip()
         msg_raw = (form.get(f"msg_id_{i}") or "").strip()
         try:
             msg_id = int(msg_raw) if msg_raw else None
         except ValueError:
             msg_id = None
-
-        if kind == "skip":
-            skipped += 1
-            _mark_import_msg_processed(db, msg_id, "skip")
-            continue
-        if kind != "idea":
-            continue
-        draft_key = (form.get(f"draft_key_{i}") or "").strip() or f"draft_{i}"
-        author = normalize_author(
-            (form.get(f"author_{i}") or "").strip(),
-            default=DEFAULT_TASK_AUTHOR,
-        )
-        tg_raw = (form.get(f"telegram_datetime_{i}") or "").strip()
-        title = (form.get(f"title_{i}") or "").strip() or None
-        condition = (form.get(f"condition_{i}") or "").strip()
-        sources = (form.get(f"sources_{i}") or "").strip() or None
-        row_tag_slugs = [s.strip() for s in form.getlist(f"tag_slugs_{i}") if str(s).strip()]
-        if not row_tag_slugs:
-            row_tag_slugs = list(DEFAULT_TAG_SLUGS)
-        idea_number_raw = (form.get(f"idea_number_{i}") or "").strip()
-        try:
-            idea_number = parse_idea_number_input(idea_number_raw)
-        except ValueError as e:
-            errors.append(f"Строка {i + 1}: {e}")
-            continue
-        media_paths = _media_paths_from_form(form, i)
-
-        if not title:
-            errors.append(f"Строка {i + 1}: у идеи нет названия — пропущена")
-            continue
-        if not condition:
-            errors.append(f"Строка {i + 1}: у идеи нет условия — пропущена")
-            continue
-        tg_dt = parse_datetime_local(tg_raw)
-        if not tg_dt:
-            errors.append(f"Строка {i + 1}: некорректная дата Telegram — пропущена")
-            continue
-        try:
-            tg_dt, shifted = _allocate_telegram_datetime(db, tg_dt)
-        except ValueError as e:
-            errors.append(f"Строка {i + 1}: {e}")
-            continue
-        if shifted:
-            errors.append(
-                f"Строка {i + 1}: дата занята другой задачей — сохранено как "
-                f"{tg_dt.strftime('%Y-%m-%d %H:%M')} (+сдвиг на свободную минуту)"
-            )
-
-        video_url = None
-        if sources:
-            for u in sources.splitlines():
-                u = u.strip()
-                if any(x in u.lower() for x in ("youtube", "youtu.be", "instagram")):
-                    video_url = u
-                    break
-
-        task = Task(
-            idea_number=idea_number,
-            title=title,
-            condition=condition,
-            author=author,
-            status=Status.TG.value,
-            archived=False,
-            video_url=video_url,
-            sources=sources,
-            telegram_datetime=tg_dt,
-        )
-        db.add(task)
-        db.flush()
-        task.tags = tags_by_slugs(db, row_tag_slugs)
-        if not task.tags:
-            task.tags = tags_by_slugs(db, list(DEFAULT_TAG_SLUGS))
-        record_created(db, task, user)
-        draft_to_task[draft_key] = task.id
-        created_tasks += 1
-        _mark_import_msg_processed(db, msg_id, "idea")
-        idea_skips: list[str] = []
-        attached_files += _attach_import_media(
-            db,
-            export_root=export_root,
-            rel_paths=media_paths,
-            task_id=task.id,
-            comment_id=None,
-            user=user,
-            skip_notes=idea_skips,
-        )
-        for note in idea_skips:
-            errors.append(f"Строка {i + 1}: пропуск файла — {note}")
-
-    for i in range(row_count):
-        if not _is_reviewed(i):
-            continue
-        kind = (form.get(f"kind_{i}") or "skip").strip()
-        if kind == "skip" or kind not in ("comment", "media"):
-            continue
-        msg_raw = (form.get(f"msg_id_{i}") or "").strip()
-        try:
-            msg_id = int(msg_raw) if msg_raw else None
-        except ValueError:
-            msg_id = None
-        text = (form.get(f"text_{i}") or "").strip()
-        author = normalize_author(
-            (form.get(f"author_{i}") or "").strip(),
-            default=DEFAULT_COMMENT_AUTHOR,
-        )
-        link_to = (form.get(f"link_to_{i}") or "").strip()
-        media_paths = _media_paths_from_form(form, i)
-        task_id = _resolve_link_to_task_id(link_to, draft_to_task, db)
-        if not task_id:
-            errors.append(f"Строка {i + 1}: нет привязки к идее — пропущена")
-            continue
-
-        if kind == "media":
-            # только файлы к задаче
-            media_skips: list[str] = []
-            n = _attach_import_media(
-                db,
-                export_root=export_root,
-                rel_paths=media_paths,
-                task_id=task_id,
-                comment_id=None,
-                user=user,
-                skip_notes=media_skips,
-            )
-            if n == 0:
-                detail = "; ".join(media_skips) if media_skips else "медиафайлы не найдены на диске"
-                errors.append(f"Строка {i + 1}: {detail}")
-            else:
-                _mark_import_msg_processed(db, msg_id, "media")
-                for note in media_skips:
-                    errors.append(f"Строка {i + 1}: пропуск файла — {note}")
-            attached_files += n
-            continue
-
-        if not text and not media_paths:
-            errors.append(f"Строка {i + 1}: пустой комментарий — пропущен")
-            continue
-        if not text:
-            text = "(файл)"
-        comment = Comment(task_id=task_id, text=text, author=author)
-        db.add(comment)
-        db.flush()
-        record_comment_added(db, task_id, user, author, text)
-        created_comments += 1
-        _mark_import_msg_processed(db, msg_id, "comment")
-        comment_skips: list[str] = []
-        attached_files += _attach_import_media(
-            db,
-            export_root=export_root,
-            rel_paths=media_paths,
-            task_id=task_id,
-            comment_id=comment.id,
-            user=user,
-            skip_notes=comment_skips,
-        )
-        for note in comment_skips:
-            errors.append(f"Строка {i + 1}: пропуск файла — {note}")
-
-    db.commit()
-
-    if created_tasks:
-        notify_import_summary(
-            created_tasks=created_tasks,
-            created_comments=created_comments,
+        media_raw = (form.get(f"media_paths_{i}") or "").strip()
+        media_paths = [p.strip() for p in media_raw.split("\n") if p.strip()] if media_raw else []
+        idea_raw = (form.get(f"idea_number_{i}") or "").strip()
+        idea_number: int | str | None = idea_raw
+        if idea_raw:
+            try:
+                idea_number = int(idea_raw)
+            except ValueError:
+                idea_number = idea_raw
+        rows_payload.append(
+            {
+                "reviewed": _is_reviewed(i),
+                "kind": (form.get(f"kind_{i}") or "skip").strip(),
+                "msg_id": msg_id,
+                "draft_key": (form.get(f"draft_key_{i}") or "").strip() or f"draft_{i}",
+                "author": (form.get(f"author_{i}") or "").strip(),
+                "telegram_datetime": (form.get(f"telegram_datetime_{i}") or "").strip(),
+                "title": (form.get(f"title_{i}") or "").strip(),
+                "condition": (form.get(f"condition_{i}") or "").strip(),
+                "sources": (form.get(f"sources_{i}") or "").strip(),
+                "tag_slugs": [s.strip() for s in form.getlist(f"tag_slugs_{i}") if str(s).strip()],
+                "idea_number": idea_number,
+                "media_paths": media_paths,
+                "text": (form.get(f"text_{i}") or "").strip(),
+                "link_to": (form.get(f"link_to_{i}") or "").strip(),
+            }
         )
 
-    parts = [
-        f"Создано задач: {created_tasks}",
-        f"комментариев: {created_comments}",
-        f"файлов: {attached_files}",
-        f"явно пропущено: {skipped}",
-        f"не обработано (оставлено): {not_reviewed}",
-    ]
-    success = ". ".join(parts) + "."
-    if errors:
-        success += " Замечания: " + "; ".join(errors[:12])
-        if len(errors) > 12:
-            success += f" … ещё {len(errors) - 12}"
-
-    return templates.TemplateResponse(
-        request,
-        "import.html",
-        _import_page_ctx(db, user, success=success),
-    )
+    job = create_job(kind="commit", user=user, export_root=export_root_raw or None)
+    job_id = job["id"]
+    payload = {"export_root": export_root_raw, "rows": rows_payload}
+    path = payload_path_for(job_id)
+    path.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+    job["payload_path"] = str(path)
+    job["message"] = "В очереди на сохранение…"
+    job["total"] = sum(1 for r in rows_payload if r.get("reviewed"))
+    save_job(job)
+    enqueue(job_id)
+    return RedirectResponse(f"/import/job/{job_id}", status_code=303)
 
 
 @router.get("/export/txt")

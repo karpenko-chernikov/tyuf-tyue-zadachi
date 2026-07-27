@@ -15,6 +15,7 @@ from app.models import Task
 from app.routes import router
 from app.tags import ensure_tags, migrate_naznachenie_to_tags
 from app.telegram_bot import start_telegram_scheduler, stop_telegram_scheduler
+from app.import_jobs import start_import_jobs_worker
 
 load_dotenv()
 
@@ -157,6 +158,7 @@ _seed_and_migrate_tags()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     start_telegram_scheduler()
+    start_import_jobs_worker()
     try:
         yield
     finally:

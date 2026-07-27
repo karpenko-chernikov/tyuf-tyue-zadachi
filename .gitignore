@@ -14,6 +14,8 @@ data/*.db
 data/backups/
 # экспорты Telegram (фото/видео) — не в git
 data/imports/
+# фоновые job’ы импорта
+data/import_jobs/
 # временные файлы sqlite
 data/*.db-journal
 data/*.db-wal

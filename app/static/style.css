@@ -1290,6 +1290,21 @@ textarea { resize: vertical; }
 
 /* Импорт из Telegram */
 .import-upload label { display: block; margin-bottom: 12px; }
+
+.import-job-card { max-width: 36rem; }
+.import-progress-bar {
+  height: 10px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 1rem 0 0.5rem;
+}
+.import-progress-fill {
+  height: 100%;
+  background: var(--accent, #2d6a4f);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
 .import-toolbar {
   display: flex;
   flex-wrap: wrap;
