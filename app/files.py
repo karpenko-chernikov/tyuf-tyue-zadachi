@@ -37,6 +37,10 @@ def guess_content_type(filename: str) -> str | None:
         return "video/quicktime"
     if name.endswith(".webm"):
         return "video/webm"
+    if name.endswith(".m4v"):
+        return "video/x-m4v"
+    if name.endswith(".mkv"):
+        return "video/x-matroska"
     if name.endswith(".pdf"):
         return "application/pdf"
     return None
@@ -178,7 +182,7 @@ def format_size(n: int) -> str:
 
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
-_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".ogg", ".ogv"}
+_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".ogg", ".ogv", ".mkv"}
 
 
 def is_image_attachment(att) -> bool:

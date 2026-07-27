@@ -114,3 +114,5 @@ proxy_send_timeout 300s;
 | 413 на большом JSON/видео | nginx `client_max_body_size 500M` |
 
 Краткая инструкция для всей команды (как пользоваться ботом): `docs/telegram-bot.md`.
+
+Импорт с фото/видео: папка экспорта на сервере — `docs/imports-on-server.md`.

@@ -13,19 +13,20 @@
   <h2>1. Источник</h2>
   <p class="muted">
     Лучше: папка экспорта на сервере в <code>data/imports/</code> (тогда есть фото/видео).
-    Или загрузите <code>result.json</code> — разбор в фоне, сайт не зависает.
-    Очень большой JSON через браузер может долго грузиться (Cloudflare).
+    Или загрузите <code>result.json</code> — разбор в фоне, но <strong>без папки photos/video_files файлы в задачи не попадут</strong>.
   </p>
   <form method="post" action="/import" enctype="multipart/form-data" class="import-upload" id="import-parse-form">
     {% if local_exports %}
-    <label>Локальный экспорт
+    <label>Папка на сервере (<code>data/imports/</code>)
       <select name="local_export">
-        <option value="">— не использовать —</option>
+        <option value="">— не выбрана: использовать файл/текст ниже —</option>
         {% for ex in local_exports %}
         <option value="{{ ex.path }}">{{ ex.name }}</option>
         {% endfor %}
       </select>
     </label>
+    {% else %}
+    <p class="alert">На сервере пока нет папок в <code>data/imports/</code>. Без них видео/фото из чата не сохранятся — см. инструкцию в docs или попросите Антона залить экспорт.</p>
     {% endif %}
     <label>Чат (если в файле несколько)
       <input type="text" name="chat_name" value="{{ chat_name or 'Идеи для заданий на ТЮФ и ТЮЕ' }}"
@@ -71,7 +72,14 @@
     </ul>
     {% set media_n = rows|selectattr('media_paths')|list|length %}
     {% if media_n %}
-    <p class="import-media-summary">Сообщений <strong>с фото/видео/файлами</strong>: {{ media_n }}. Ищите блок <strong>«Файлы»</strong> и превью под карточкой.</p>
+    <p class="import-media-summary">Сообщений <strong>с фото/видео/файлами</strong>: {{ media_n }}.
+      {% if export_root %}
+      Превью и сохранение из папки <code>{{ export_root }}</code>.
+      {% else %}
+      <strong class="alert-inline">Папка экспорта не выбрана — превью и сохранение файлов недоступны.</strong>
+      Залейте экспорт в <code>data/imports/</code> и разберите снова.
+      {% endif %}
+    </p>
     {% else %}
     <p class="import-media-summary">В этом разборе файлов не видно — убедитесь, что выбран локальный экспорт из <code>data/imports/</code> (не только JSON без папки photos).</p>
     {% endif %}
@@ -150,18 +158,22 @@
         <div class="import-media-grid">
           {% for p in r.media_paths %}
           {% set name = p.split('/')[-1] %}
-          {% set low = name.lower() %}
-          {% set is_img = low.endswith('.jpg') or low.endswith('.jpeg') or low.endswith('.png') or low.endswith('.gif') or low.endswith('.webp') %}
+          {% set is_img = media_path_is_image(p) %}
+          {% set is_vid = media_path_is_video(p) %}
           <div class="import-media-item">
             {% if export_root and is_img %}
             <a href="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}" target="_blank" rel="noopener">
               <img src="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}" alt="{{ name }}" loading="lazy">
             </a>
-            {% elif export_root and (low.endswith('.mp4') or low.endswith('.mov') or low.endswith('.webm') or low.endswith('.m4v')) %}
+            {% elif export_root and is_vid %}
             <div class="import-media-video-wrap">
               <video controls preload="metadata" playsinline
                 src="/import/media?root={{ export_root|urlencode }}&path={{ p|urlencode }}"></video>
             </div>
+            {% elif is_vid %}
+            <div class="import-media-video">видео</div>
+            {% elif is_img %}
+            <div class="import-media-file">фото</div>
             {% else %}
             <div class="import-media-file">файл</div>
             {% endif %}

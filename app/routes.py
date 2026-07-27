@@ -85,6 +85,9 @@ from app.import_jobs import (
 from app.tg_import import (
     find_local_export_dirs,
     find_local_export_json_path,
+    media_path_is_image,
+    media_path_is_video,
+    resolve_export_media_path,
 )
 from app.utils import (
     attach_idea_occurrences,
@@ -108,6 +111,8 @@ templates.env.globals["status_pill_class"] = status_pill_class
 templates.env.globals["format_igraetsya"] = format_igraetsya
 templates.env.globals["format_idea_label"] = format_idea_label
 templates.env.globals["format_idea_title"] = format_idea_title
+templates.env.globals["media_path_is_image"] = media_path_is_image
+templates.env.globals["media_path_is_video"] = media_path_is_video
 
 
 @router.get("/health")
@@ -1787,7 +1792,7 @@ def import_media_preview(
         export_root.resolve().relative_to(imports_root.resolve())
     except ValueError:
         raise HTTPException(status_code=403, detail="Недоступный путь")
-    file_path = _safe_import_file(export_root, path)
+    file_path = resolve_export_media_path(export_root, path) or _safe_import_file(export_root, path)
     if not file_path:
         raise HTTPException(status_code=404, detail="Файл не найден")
     from fastapi.responses import FileResponse
@@ -1833,17 +1838,24 @@ def _attach_import_media(
     user: str,
     skip_notes: list[str] | None = None,
 ) -> int:
-    if not export_root or not rel_paths:
+    if not rel_paths:
+        return 0
+    if not export_root:
+        if skip_notes is not None:
+            skip_notes.append(
+                "нет папки экспорта на сервере (нужен data/imports/… с photos и video_files, "
+                "одного result.json мало)"
+            )
         return 0
     paths: list[Path] = []
     for rel in rel_paths:
-        # пути в JSON вида chats/chat_001/photos/...
-        candidate = (export_root / rel).resolve()
-        try:
-            candidate.relative_to(export_root.resolve())
-        except ValueError:
-            continue
-        paths.append(candidate)
+        found = resolve_export_media_path(export_root, rel)
+        if found:
+            paths.append(found)
+        elif skip_notes is not None:
+            skip_notes.append(f"{rel}: файл не найден в {export_root.name}")
+    if not paths:
+        return 0
     skipped: list[str] = []
     saved = save_local_files(
         db,

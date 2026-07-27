@@ -212,6 +212,65 @@ def extract_media_paths(msg: dict) -> list[str]:
     return paths
 
 
+def media_path_is_video(rel: str) -> bool:
+    """Эвристика: расширение или папка video_files в экспорте Telegram."""
+    low = (rel or "").strip().lower().replace("\\", "/")
+    if any(low.endswith(ext) for ext in (".mp4", ".mov", ".webm", ".m4v", ".mkv", ".ogg", ".ogv")):
+        return True
+    return "/video_files/" in f"/{low}" or low.startswith("video_files/")
+
+
+def media_path_is_image(rel: str) -> bool:
+    low = (rel or "").strip().lower()
+    return any(low.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"))
+
+
+def resolve_export_media_path(export_root: Path, rel: str) -> Path | None:
+    """Находит файл экспорта: прямой путь, без префикса chats/…, поиск по имени."""
+    rel = (rel or "").strip().lstrip("/").replace("\\", "/")
+    if not rel or ".." in Path(rel).parts:
+        return None
+    root = export_root.resolve()
+    candidates: list[Path] = [root / rel]
+    parts = Path(rel).parts
+    if len(parts) >= 3 and parts[0] == "chats":
+        # chats/chat_001/video_files/x.mp4 → video_files/x.mp4 относительно папки чата
+        candidates.append(root / Path(*parts[2:]))
+    if len(parts) >= 2:
+        candidates.append(root / Path(*parts[-2:]))
+    candidates.append(root / parts[-1])
+
+    seen: set[str] = set()
+    for cand in candidates:
+        key = str(cand)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            resolved = cand.resolve()
+            resolved.relative_to(root)
+        except (ValueError, OSError):
+            continue
+        if resolved.is_file():
+            return resolved
+
+    # последний шанс: уникальное имя файла где-то под корнем (не глубже 4 уровней)
+    name = parts[-1]
+    if not name:
+        return None
+    try:
+        matches = [
+            p
+            for p in root.rglob(name)
+            if p.is_file() and len(p.relative_to(root).parts) <= 4
+        ]
+    except OSError:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def parse_export_datetime(msg: dict) -> datetime | None:
     date_s = msg.get("date")
     if isinstance(date_s, str) and date_s.strip():
