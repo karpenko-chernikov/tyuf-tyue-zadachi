@@ -677,6 +677,7 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
 
     tasks = (
         db.query(Task)
+        .options(selectinload(Task.tags))
         .filter(Task.tags.any(Tag.slug == board))
         .order_by(
             Task.idea_number.asc().nullslast(),

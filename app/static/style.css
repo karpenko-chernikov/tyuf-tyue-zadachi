@@ -344,6 +344,7 @@ a:hover { text-decoration: underline; }
   word-break: break-word;
 }
 .table-tasks .status-pill,
+.table-tasks .author-pill,
 .table-tasks .board-chip {
   white-space: nowrap;
   line-height: 1;
@@ -354,18 +355,13 @@ a:hover { text-decoration: underline; }
   align-items: center;
 }
 .table-tasks .author-pill {
-  white-space: normal;
-  line-height: 1.15;
-  min-height: var(--pill-h);
-  height: auto;
   max-width: 100%;
-  padding: 4px 10px;
-  box-sizing: border-box;
-  justify-content: center;
-  align-items: center;
-  overflow: visible;
-  text-overflow: unset;
-  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+}
+.table-tasks td:nth-child(6) {
+  overflow: hidden;
 }
 .table-tasks .tag-chips {
   flex-wrap: wrap;
@@ -894,15 +890,20 @@ textarea { resize: vertical; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
-  align-items: start;
-  min-height: 60vh;
+  align-items: stretch;
+  height: calc(100vh - 200px);
+  min-height: 420px;
+  max-height: 900px;
 }
 .kanban-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 10px;
-  min-height: 280px;
   backdrop-filter: blur(4px);
 }
 .kanban-col-archive {
@@ -921,16 +922,18 @@ textarea { resize: vertical; }
   justify-content: space-between;
   align-items: center;
   position: sticky;
-  top: 64px;
-  z-index: 2;
+  top: 0;
+  z-index: 3;
+  flex-shrink: 0;
   font-weight: 700;
   font-size: 13px;
   margin: -2px -2px 10px;
   padding: 8px 10px;
   color: var(--ink);
-  background: rgba(247, 250, 248, 0.95);
+  background: rgba(247, 250, 248, 0.97);
   border-radius: 12px;
   backdrop-filter: blur(6px);
+  box-shadow: 0 1px 0 rgba(20, 40, 30, 0.04);
 }
 .kanban-col-header .count {
   background: var(--brand-soft);
@@ -942,10 +945,15 @@ textarea { resize: vertical; }
   text-align: center;
 }
 .kanban-list {
-  min-height: 120px;
+  min-height: 80px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-right: 2px;
+  overscroll-behavior: contain;
 }
 .kanban-card {
   background: var(--surface);
@@ -953,8 +961,11 @@ textarea { resize: vertical; }
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
   cursor: grab;
+  padding: 12px 12px 10px;
   transition: transform .15s var(--ease), box-shadow .15s var(--ease);
   animation: rise-in 0.35s var(--ease) both;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .kanban-card:nth-child(1) { animation-delay: 0.02s; }
 .kanban-card:nth-child(2) { animation-delay: 0.04s; }
@@ -971,13 +982,6 @@ textarea { resize: vertical; }
   box-shadow: inset 4px 0 0 #e74c3c;
 }
 .kanban-card:active { cursor: grabbing; }
-.kanban-card-link {
-  display: block;
-  padding: 14px;
-  color: inherit;
-  text-decoration: none;
-}
-.kanban-card-link:hover { text-decoration: none; }
 .kanban-card-num {
   font-size: 12px;
   color: var(--brand);
@@ -995,6 +999,16 @@ textarea { resize: vertical; }
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
+.kanban-card-tags {
+  margin: 0 0 8px;
+  gap: 4px;
+}
+.kanban-card-tags .board-chip {
+  font-size: 11px;
+  padding: 2px 7px;
+  height: auto;
+  line-height: 1.2;
+}
 .kanban-card-meta {
   display: flex;
   gap: 8px;
@@ -1011,18 +1025,7 @@ textarea { resize: vertical; }
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.kanban-card-archive {
-  margin-top: 8px;
-  font-size: 11px;
-  color: #fff;
-  background: #e74c3c;
-  border-radius: 6px;
-  padding: 3px 8px;
-  display: inline-block;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  white-space: nowrap;
 }
 .kanban-card-badge {
   margin-top: 8px;
@@ -1042,6 +1045,17 @@ textarea { resize: vertical; }
   box-shadow: var(--shadow-lift);
   transform: rotate(1deg) scale(1.02);
   cursor: grabbing;
+}
+
+@media (max-width: 900px) {
+  .kanban {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(240px, 260px);
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: calc(100vh - 180px);
+  }
 }
 
 .history-list { display: flex; flex-direction: column; gap: 14px; }

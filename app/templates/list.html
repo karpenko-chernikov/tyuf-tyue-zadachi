@@ -102,7 +102,7 @@
       <td class="task-date">{{ task.telegram_datetime.strftime('%d.%m.%Y %H:%M') }}</td>
       <td>
         {% if task.author %}
-        <span class="author-pill author-{{ author_pill_class(task.author) }}">{{ task.author }}</span>
+        <span class="author-pill author-{{ author_pill_class(task.author) }}" title="{{ task.author }}">{{ task.author }}</span>
         {% else %}
         <span class="muted">—</span>
         {% endif %}

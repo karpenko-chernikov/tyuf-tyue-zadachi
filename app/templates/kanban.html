@@ -17,7 +17,7 @@
   {% endfor %}
 </div>
 
-<p class="muted board-hint">Перетаскивайте карточки между колонками, чтобы сменить статус.</p>
+<p class="muted board-hint">Перетаскивайте карточки между колонками, чтобы сменить статус. Клик по карточке — открыть задачу.</p>
 
 <div class="kanban" id="kanban" data-board="{{ board }}">
   {% for st in columns %}
@@ -28,19 +28,31 @@
     </div>
     <div class="kanban-list" data-status="{{ st.value }}">
     {% for task in tasks_by_status.get(st.value, []) %}
-      <article class="kanban-card {% if task.status == 'archived' %}kanban-card-archived{% endif %}" data-id="{{ task.id }}" draggable="false">
-        <a href="/tasks/{{ task.id }}" class="kanban-card-link">
-          <div class="kanban-card-num">{% if task.idea_number is none %}без №{% else %}{{ format_idea_label(task) }}{% endif %}</div>
-          <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
-          <div class="kanban-card-meta">
-            {% if task.author %}
-            <span class="author-pill author-{{ author_pill_class(task.author) }}">{{ task.author }}</span>
-            {% endif %}
-            <span class="kanban-card-date">{{ task.telegram_datetime.strftime('%d.%m.%Y') }}</span>
-          </div>
-          {% set ig = format_igraetsya(task) %}
-          {% if ig %}<div class="kanban-card-badge">{{ ig }}</div>{% endif %}
-        </a>
+      <article
+        class="kanban-card {% if task.status == 'archived' %}kanban-card-archived{% endif %}"
+        data-id="{{ task.id }}"
+        data-href="/tasks/{{ task.id }}"
+        draggable="false"
+        role="link"
+        tabindex="0"
+      >
+        <div class="kanban-card-num">{% if task.idea_number is none %}без №{% else %}{{ format_idea_label(task) }}{% endif %}</div>
+        <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
+        {% if task.tags %}
+        <div class="kanban-card-tags tag-chips">
+          {% for t in task.tags|sort(attribute='sort_order') %}
+          <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="kanban-card-meta">
+          {% if task.author %}
+          <span class="author-pill author-{{ author_pill_class(task.author) }}" title="{{ task.author }}">{{ task.author }}</span>
+          {% endif %}
+          <span class="kanban-card-date">{{ task.telegram_datetime.strftime('%d.%m.%Y') }}</span>
+        </div>
+        {% set ig = format_igraetsya(task) %}
+        {% if ig %}<div class="kanban-card-badge">{{ ig }}</div>{% endif %}
       </article>
     {% endfor %}
     </div>
@@ -75,17 +87,43 @@ async function postStatus(taskId, status, confirm) {
   return { res, data };
 }
 
+document.querySelectorAll('.kanban-card').forEach((card) => {
+  const open = () => {
+    if (card.dataset.dragging === '1') return;
+    const href = card.dataset.href;
+    if (href) window.location = href;
+  };
+  card.addEventListener('click', open);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
+  });
+});
+
 document.querySelectorAll('.kanban-list').forEach(list => {
   new Sortable(list, {
     group: 'tasks',
     animation: 180,
     ghostClass: 'kanban-ghost',
     dragClass: 'kanban-drag',
+    delay: 80,
+    delayOnTouchOnly: true,
+    scroll: true,
+    bubbleScroll: true,
+    forceAutoScrollFallback: true,
+    onStart: (evt) => {
+      if (evt.item) evt.item.dataset.dragging = '1';
+    },
     onEnd: async (evt) => {
       const card = evt.item;
       const taskId = card.dataset.id;
       const newStatus = evt.to.dataset.status;
       const oldStatus = evt.from.dataset.status;
+
+      // не открывать карточку после дропа
+      setTimeout(() => { card.dataset.dragging = '0'; }, 50);
 
       refreshKanbanCounts();
       if (newStatus === oldStatus) return;
