@@ -19,7 +19,7 @@
 
 <p class="muted board-hint">Перетаскивайте карточки между колонками, чтобы сменить статус. Клик по карточке — открыть задачу.</p>
 
-<div class="kanban" id="kanban" data-board="{{ board }}">
+<div class="kanban" id="kanban" data-board="{{ board }}" style="--kanban-cols: {{ columns|length }}">
   {% for st in columns %}
   <div class="kanban-col {% if st.value == 'archived' %}kanban-col-archive{% endif %}">
     <div class="kanban-col-header">
