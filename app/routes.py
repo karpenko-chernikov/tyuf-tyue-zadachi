@@ -141,6 +141,7 @@ async def _uploads_from_request(request: Request, field: str) -> list[UploadFile
 # Поля, которые очищаем при уходе со статуса «играется»
 _IGRAETSYA_ONLY_FIELDS = (
     ("itogovaya_formulirovka", "Итоговая формулировка"),
+    ("igraetsya_title", "Название в итоговом списке"),
     ("turnir", "Турнир"),
     ("turnir_year", "Год турнира"),
     ("task_number", "Номер задачи"),
@@ -169,6 +170,8 @@ def _fields_to_clear_on_status(task: Task, new_status: str) -> list[tuple[str, s
                 to_clear.append((field, label))
     if new_status == Status.TG.value and _field_has_value(task, "formulirovka"):
         to_clear.append(("formulirovka", "Формулировка перед отправлением"))
+    if new_status == Status.TG.value and _field_has_value(task, "formulirovka_title"):
+        to_clear.append(("formulirovka_title", "Название для отправки"))
     return to_clear
 
 
@@ -177,12 +180,14 @@ def _apply_status_field_clears(task: Task, new_status: str) -> None:
         return
     if new_status != Status.IGRAETSYA.value:
         task.itogovaya_formulirovka = None
+        task.igraetsya_title = None
         task.turnir = None
         task.turnir_year = None
         task.task_number = None
         task.etap_kk = None
     if new_status == Status.TG.value:
         task.formulirovka = None
+        task.formulirovka_title = None
 
 
 def _confirm_message(new_status: str, to_clear: list[tuple[str, str]]) -> str:
@@ -677,7 +682,7 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
 
     tasks = (
         db.query(Task)
-        .options(selectinload(Task.tags))
+        .options(selectinload(Task.tags), selectinload(Task.attachments))
         .filter(Task.tags.any(Tag.slug == board))
         .order_by(
             Task.idea_number.asc().nullslast(),
@@ -688,6 +693,21 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
     )
     attach_idea_occurrences(db, tasks)
     tasks = _sort_tasks_by_idea_display(tasks)
+
+    media_counts: dict[int, dict[str, int]] = {}
+    for task in tasks:
+        imgs = vids = other = 0
+        for att in task.attachments or []:
+            if att.comment_id is not None:
+                continue
+            if is_image_attachment(att):
+                imgs += 1
+            elif is_video_attachment(att):
+                vids += 1
+            else:
+                other += 1
+        if imgs or vids or other:
+            media_counts[task.id] = {"images": imgs, "videos": vids, "files": other}
 
     tasks_by_status = {s.value: [] for s in columns}
     for task in tasks:
@@ -705,6 +725,7 @@ def kanban_board(request: Request, board: str, db: Session = Depends(get_db)):
             "boards": boards,
             "columns": columns,
             "tasks_by_status": tasks_by_status,
+            "media_counts": media_counts,
             "status_short": STATUS_SHORT_LABELS,
             "format_igraetsya": format_igraetsya,
             "format_idea_label": format_idea_label,
@@ -740,10 +761,11 @@ def api_set_status(
     # Для «формулировка» / «играется» статус меняем только если поля уже заполнены.
     # Иначе открываем форму — без сохранения статус не меняется (Отмена = остаётся как было).
     needs_edit = False
-    if status == Status.FORMULIROVKA.value and not (task.formulirovka or "").strip():
-        needs_edit = True
+    if status == Status.FORMULIROVKA.value:
+        if not (task.formulirovka or "").strip() or not (task.formulirovka_title or "").strip():
+            needs_edit = True
     elif status == Status.IGRAETSYA.value:
-        if not (task.itogovaya_formulirovka or "").strip():
+        if not (task.itogovaya_formulirovka or "").strip() or not (task.igraetsya_title or "").strip():
             needs_edit = True
         elif task_is_kapitanka(task):
             if not task.etap_kk or not task.turnir_year:
@@ -911,6 +933,8 @@ def _build_task_from_form(
     turnir_year: str,
     task_number: str,
     etap_kk: str,
+    formulirovka_title: str = "",
+    igraetsya_title: str = "",
 ) -> Task:
     tg_dt = parse_datetime_local(telegram_datetime)
     if not tg_dt:
@@ -962,12 +986,17 @@ def _build_task_from_form(
     if status == Status.METODKOM.value and not allow_metodkom:
         raise ValueError("Статус «Отправлена в методкомиссию» недоступен для выбранных тегов")
 
-    if status == Status.FORMULIROVKA.value and not formulirovka.strip():
-        raise ValueError("Заполните «Формулировку перед отправлением»")
+    if status == Status.FORMULIROVKA.value:
+        if not formulirovka.strip():
+            raise ValueError("Заполните «Формулировку перед отправлением»")
+        if not formulirovka_title.strip():
+            raise ValueError("Укажите «Название для отправки»")
 
     if status == Status.IGRAETSYA.value:
         if not itogovaya_formulirovka.strip():
             raise ValueError("Заполните «Итоговую формулировку»")
+        if not igraetsya_title.strip():
+            raise ValueError("Укажите «Название в итоговом списке»")
         if is_kk:
             if not etap_kk.strip() or not turnir_year.strip():
                 raise ValueError("Для Капитанки укажите этап (полуфинал/финал) и год")
@@ -983,7 +1012,9 @@ def _build_task_from_form(
     task.title = title.strip() or None
     task.condition = condition.strip() or None
     task.formulirovka = formulirovka.strip() or None
+    task.formulirovka_title = formulirovka_title.strip() or None
     task.itogovaya_formulirovka = itogovaya_formulirovka.strip() or None
+    task.igraetsya_title = igraetsya_title.strip() or None
     task.author = author.strip() or None
     task.tags = tags
     task.status = status or Status.TG.value
@@ -1072,7 +1103,9 @@ async def create_task(
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
     formulirovka: str = Form(""),
+    formulirovka_title: str = Form(""),
     itogovaya_formulirovka: str = Form(""),
+    igraetsya_title: str = Form(""),
     turnir: str = Form(""),
     turnir_year: str = Form(""),
     task_number: str = Form(""),
@@ -1105,6 +1138,8 @@ async def create_task(
             turnir_year,
             task_number,
             etap_kk,
+            formulirovka_title=formulirovka_title,
+            igraetsya_title=igraetsya_title,
         )
         db.flush()
         record_created(db, task, user)
@@ -1149,7 +1184,9 @@ async def create_task(
             "sources": sources,
             "telegram_datetime": telegram_datetime,
             "formulirovka": formulirovka,
+            "formulirovka_title": formulirovka_title,
             "itogovaya_formulirovka": itogovaya_formulirovka,
+            "igraetsya_title": igraetsya_title,
             "turnir": turnir,
             "turnir_year": turnir_year,
             "task_number": task_number,
@@ -1249,9 +1286,15 @@ def edit_task_page(
 
     hint = None
     if target == Status.FORMULIROVKA.value:
-        hint = "Заполните «Формулировку перед отправлением» и нажмите «Сохранить». «Отмена» — статус не изменится."
+        hint = (
+            "Заполните «Название для отправки» и «Формулировку перед отправлением», "
+            "затем «Сохранить». «Отмена» — статус не изменится."
+        )
     elif target == Status.IGRAETSYA.value:
-        hint = "Заполните «Итоговую формулировку» и данные турнира, затем «Сохранить». «Отмена» — статус не изменится."
+        hint = (
+            "Заполните «Название в итоговом списке», «Итоговую формулировку» и данные турнира, "
+            "затем «Сохранить». «Отмена» — статус не изменится."
+        )
 
     first_tag = sorted(task.tags, key=lambda t: (t.sort_order, t.name))[0] if task.tags else None
     cancel_url = f"/kanban/{first_tag.slug}" if first_tag else f"/tasks/{task.id}"
@@ -1291,7 +1334,9 @@ async def update_task(
     sources: str = Form(""),
     telegram_datetime: str = Form(""),
     formulirovka: str = Form(""),
+    formulirovka_title: str = Form(""),
     itogovaya_formulirovka: str = Form(""),
+    igraetsya_title: str = Form(""),
     turnir: str = Form(""),
     turnir_year: str = Form(""),
     task_number: str = Form(""),
@@ -1326,6 +1371,8 @@ async def update_task(
             turnir_year,
             task_number,
             etap_kk,
+            formulirovka_title=formulirovka_title,
+            igraetsya_title=igraetsya_title,
         )
         record_update(db, task, user, before)
         for att in await save_uploads(
@@ -1352,7 +1399,9 @@ async def update_task(
             "sources": sources,
             "telegram_datetime": telegram_datetime,
             "formulirovka": formulirovka,
+            "formulirovka_title": formulirovka_title,
             "itogovaya_formulirovka": itogovaya_formulirovka,
+            "igraetsya_title": igraetsya_title,
             "turnir": turnir,
             "turnir_year": turnir_year,
             "task_number": task_number,
@@ -1395,7 +1444,9 @@ async def update_task(
             "sources": sources,
             "telegram_datetime": telegram_datetime,
             "formulirovka": formulirovka,
+            "formulirovka_title": formulirovka_title,
             "itogovaya_formulirovka": itogovaya_formulirovka,
+            "igraetsya_title": igraetsya_title,
             "turnir": turnir,
             "turnir_year": turnir_year,
             "task_number": task_number,

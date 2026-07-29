@@ -56,17 +56,27 @@
   {{ attachment_list(task_files) }}
 </section>
 
-{% if task.formulirovka %}
+{% if task.formulirovka or task.formulirovka_title %}
 <section class="card">
   <h2>Формулировка перед отправлением</h2>
+  {% if task.formulirovka_title %}
+  <p><strong>Название для отправки:</strong> {{ task.formulirovka_title }}</p>
+  {% endif %}
+  {% if task.formulirovka %}
   <div class="pre-wrap">{{ task.formulirovka }}</div>
+  {% endif %}
 </section>
 {% endif %}
 
-{% if task.itogovaya_formulirovka %}
+{% if task.itogovaya_formulirovka or task.igraetsya_title %}
 <section class="card">
   <h2>Итоговая формулировка</h2>
+  {% if task.igraetsya_title %}
+  <p><strong>Название в итоговом списке:</strong> {{ task.igraetsya_title }}</p>
+  {% endif %}
+  {% if task.itogovaya_formulirovka %}
   <div class="pre-wrap">{{ task.itogovaya_formulirovka }}</div>
+  {% endif %}
 </section>
 {% endif %}
 

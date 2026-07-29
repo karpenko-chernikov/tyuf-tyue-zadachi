@@ -67,11 +67,15 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
         if task.formulirovka:
             lines.append("")
             lines.append("Формулировка перед отправлением:")
+            if task.formulirovka_title:
+                lines.append(f"Название для отправки: {task.formulirovka_title}")
             lines.append(task.formulirovka)
 
         if task.itogovaya_formulirovka:
             lines.append("")
             lines.append("Итоговая формулировка:")
+            if task.igraetsya_title:
+                lines.append(f"Название в итоговом списке: {task.igraetsya_title}")
             lines.append(task.itogovaya_formulirovka)
 
         if task.sources:
@@ -127,7 +131,9 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
         "Условие",
         "Файлы к условию",
         "Формулировка перед отправлением",
+        "Название для отправки",
         "Итоговая формулировка",
+        "Название в итоговом списке",
         "Источники",
         "Комментарии",
         "Турнир",
@@ -162,7 +168,9 @@ def export_tasks_csv(db: Session, tasks=None) -> str:
             task.condition or "",
             task_files,
             task.formulirovka or "",
+            task.formulirovka_title or "",
             task.itogovaya_formulirovka or "",
+            task.igraetsya_title or "",
             (task.sources or "").replace("\n", " "),
             comments,
             TURNIR_LABELS.get(task.turnir or "", task.turnir or ""),

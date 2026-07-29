@@ -17,6 +17,13 @@
   {% endfor %}
 </div>
 
+<div class="kanban-toolbar">
+  <label class="kanban-search-label">
+    <span class="visually-hidden">Поиск на доске</span>
+    <input type="search" id="kanban-search" placeholder="Поиск: номер, название, автор…" autocomplete="off">
+  </label>
+  <span class="muted" id="kanban-search-hint"></span>
+</div>
 <p class="muted board-hint">Перетаскивайте карточки между колонками, чтобы сменить статус. Клик по карточке — открыть задачу.</p>
 
 <div class="kanban" id="kanban" data-board="{{ board }}" style="--kanban-cols: {{ columns|length }}">
@@ -28,22 +35,42 @@
     </div>
     <div class="kanban-list" data-status="{{ st.value }}">
     {% for task in tasks_by_status.get(st.value, []) %}
+      {% set mc = media_counts.get(task.id) %}
+      {% set missing_ft = task.status in ('formulirovka', 'metodkom', 'igraetsya') and not task.formulirovka_title %}
+      {% set missing_it = task.status == 'igraetsya' and not task.igraetsya_title %}
       <article
         class="kanban-card {% if task.status == 'archived' %}kanban-card-archived{% endif %}"
         data-id="{{ task.id }}"
         data-href="/tasks/{{ task.id }}"
+        data-search="{{ (format_idea_label(task) ~ ' ' ~ (task.title or '') ~ ' ' ~ (task.formulirovka_title or '') ~ ' ' ~ (task.igraetsya_title or '') ~ ' ' ~ (task.author or '') ~ ' ' ~ (task.condition or ''))|lower }}"
         draggable="false"
         role="link"
         tabindex="0"
       >
         <div class="kanban-card-num">{% if task.idea_number is none %}без №{% else %}{{ format_idea_label(task) }}{% endif %}</div>
         <div class="kanban-card-title">{{ task.title or 'Без названия' }}</div>
+        {% if task.formulirovka_title and task.status in ('formulirovka', 'metodkom', 'igraetsya') %}
+        <div class="kanban-card-sub">Отправка: {{ task.formulirovka_title }}</div>
+        {% endif %}
+        {% if task.igraetsya_title and task.status == 'igraetsya' %}
+        <div class="kanban-card-sub">Список: {{ task.igraetsya_title }}</div>
+        {% endif %}
         {% if task.tags %}
         <div class="kanban-card-tags tag-chips">
           {% for t in task.tags|sort(attribute='sort_order') %}
           <span class="board-chip tag-{{ t.slug }}">{{ t.name }}</span>
           {% endfor %}
         </div>
+        {% endif %}
+        {% if mc %}
+        <div class="kanban-card-media" title="Вложения к условию">
+          {% if mc.images %}<span>фото {{ mc.images }}</span>{% endif %}
+          {% if mc.videos %}<span>видео {{ mc.videos }}</span>{% endif %}
+          {% if mc.files %}<span>файлы {{ mc.files }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if missing_ft or missing_it %}
+        <div class="kanban-card-warn">нужно название{% if missing_it %} в списке{% elif missing_ft %} для отправки{% endif %}</div>
         {% endif %}
         <div class="kanban-card-meta">
           {% if task.author %}
@@ -66,9 +93,32 @@ function refreshKanbanCounts() {
   document.querySelectorAll('.kanban-list').forEach(col => {
     const st = col.dataset.status;
     const el = document.getElementById('count-' + st);
-    if (el) el.textContent = col.querySelectorAll('.kanban-card').length;
+    if (el) {
+      const visible = [...col.querySelectorAll('.kanban-card')].filter(c => !c.hidden).length;
+      el.textContent = visible;
+    }
   });
 }
+
+function applyKanbanSearch() {
+  const q = (document.getElementById('kanban-search')?.value || '').trim().toLowerCase();
+  let shown = 0;
+  let total = 0;
+  document.querySelectorAll('.kanban-card').forEach((card) => {
+    total += 1;
+    const hay = card.dataset.search || '';
+    const ok = !q || hay.includes(q);
+    card.hidden = !ok;
+    if (ok) shown += 1;
+  });
+  const hint = document.getElementById('kanban-search-hint');
+  if (hint) {
+    hint.textContent = q ? `Показано ${shown} из ${total}` : '';
+  }
+  refreshKanbanCounts();
+}
+
+document.getElementById('kanban-search')?.addEventListener('input', applyKanbanSearch);
 
 function revertCard(evt, card) {
   evt.from.insertBefore(card, evt.from.children[evt.oldIndex] || null);
@@ -113,6 +163,8 @@ document.querySelectorAll('.kanban-list').forEach(list => {
     scroll: true,
     bubbleScroll: true,
     forceAutoScrollFallback: true,
+    filter: '[hidden]',
+    preventOnFilter: true,
     onStart: (evt) => {
       if (evt.item) evt.item.dataset.dragging = '1';
     },
@@ -122,7 +174,6 @@ document.querySelectorAll('.kanban-list').forEach(list => {
       const newStatus = evt.to.dataset.status;
       const oldStatus = evt.from.dataset.status;
 
-      // не открывать карточку после дропа
       setTimeout(() => { card.dataset.dragging = '0'; }, 50);
 
       refreshKanbanCounts();

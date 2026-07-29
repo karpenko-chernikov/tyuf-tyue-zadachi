@@ -124,6 +124,14 @@
 
     {% set show_formulirovka = status_val == 'formulirovka' or status_val == 'metodkom' or status_val == 'igraetsya' %}
     <div id="formulirovka-fields" class="{% if not show_formulirovka %}hidden{% endif %}">
+      {% set ft_val = f.formulirovka_title if f.formulirovka_title is defined else (task.formulirovka_title if task and task.formulirovka_title else (task.title if task else '')) %}
+      <label>Название для отправки {% if status_val == 'formulirovka' %}*{% endif %}
+        <input type="text" name="formulirovka_title" id="formulirovka-title-input"
+          value="{{ ft_val or '' }}"
+          placeholder="Как назовём задачу при отправке"
+          {% if status_val == 'formulirovka' %}required{% endif %}>
+        <span class="hint">Отдельное короткое название на этапе формулировки. Для старых задач можно начать с текущего «Название».</span>
+      </label>
       <label>Формулировка перед отправлением {% if status_val == 'formulirovka' %}*{% endif %}
         <textarea name="formulirovka" rows="6" id="formulirovka-input"
           {% if status_val == 'formulirovka' %}required{% endif %}>{% if f.formulirovka is defined %}{{ f.formulirovka }}{% elif task %}{{ task.formulirovka or '' }}{% endif %}</textarea>
@@ -133,6 +141,14 @@
     {% set show_igraetsya = status_val == 'igraetsya' %}
     <div id="igraetsya-fields" class="{% if not show_igraetsya %}hidden{% endif %}">
       <h3>Играется в турнире</h3>
+      {% set it_val = f.igraetsya_title if f.igraetsya_title is defined else (task.igraetsya_title if task and task.igraetsya_title else (task.formulirovka_title if task and task.formulirovka_title else (task.title if task else ''))) %}
+      <label>Название в итоговом списке {% if status_val == 'igraetsya' %}*{% endif %}
+        <input type="text" name="igraetsya_title" id="igraetsya-title-input"
+          value="{{ it_val or '' }}"
+          placeholder="Как задача войдёт в итоговый список"
+          {% if status_val == 'igraetsya' %}required{% endif %}>
+        <span class="hint">Название для финального списка турнира. Можно взять из «Названия для отправки» или поправить.</span>
+      </label>
       <label>Итоговая формулировка {% if status_val == 'igraetsya' %}*{% endif %}
         <textarea name="itogovaya_formulirovka" rows="6" id="itogovaya-input"
           {% if status_val == 'igraetsya' %}required{% endif %}>{% if f.itogovaya_formulirovka is defined %}{{ f.itogovaya_formulirovka }}{% elif task %}{{ task.itogovaya_formulirovka or '' }}{% endif %}</textarea>
@@ -213,10 +229,12 @@
 const status = document.getElementById('status');
 const formulirovkaFields = document.getElementById('formulirovka-fields');
 const formulirovkaInput = document.getElementById('formulirovka-input');
+const formulirovkaTitleInput = document.getElementById('formulirovka-title-input');
 const igraetsyaFields = document.getElementById('igraetsya-fields');
 const igraetsyaRegular = document.getElementById('igraetsya-regular');
 const igraetsyaKk = document.getElementById('igraetsya-kk');
 const itogovayaInput = document.getElementById('itogovaya-input');
+const igraetsyaTitleInput = document.getElementById('igraetsya-title-input');
 
 function isKapitankaChecked() {
   const box = document.querySelector('input[name="tag_slugs"][value="kapitanka"]');
@@ -231,11 +249,13 @@ function syncFields() {
 
   formulirovkaFields.classList.toggle('hidden', !showForm);
   if (formulirovkaInput) formulirovkaInput.required = st === 'formulirovka';
+  if (formulirovkaTitleInput) formulirovkaTitleInput.required = st === 'formulirovka';
 
   igraetsyaFields.classList.toggle('hidden', !showIgra);
   igraetsyaRegular.classList.toggle('hidden', isKk);
   igraetsyaKk.classList.toggle('hidden', !isKk);
   if (itogovayaInput) itogovayaInput.required = showIgra;
+  if (igraetsyaTitleInput) igraetsyaTitleInput.required = showIgra;
 
   igraetsyaRegular.querySelectorAll('input, select').forEach(el => {
     el.disabled = isKk || !showIgra;
