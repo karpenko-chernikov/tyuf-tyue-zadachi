@@ -17,12 +17,11 @@
   {% endfor %}
 </div>
 
-<div class="kanban-toolbar">
-  <label class="kanban-search-label">
-    <span class="visually-hidden">Поиск на доске</span>
-    <input type="search" id="kanban-search" placeholder="Поиск: номер, название, автор…" autocomplete="off">
-  </label>
-  <span class="muted" id="kanban-search-hint"></span>
+<div class="filters filters-panel kanban-filters">
+  <input type="search" id="kanban-search" placeholder="Поиск по номеру, названию, автору" autocomplete="off">
+  <div class="filters-row">
+    <span class="muted" id="kanban-search-hint"></span>
+  </div>
 </div>
 <p class="muted board-hint">Перетаскивайте карточки между колонками, чтобы сменить статус. Клик по карточке — открыть задачу.</p>
 

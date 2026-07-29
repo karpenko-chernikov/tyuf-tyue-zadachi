@@ -886,32 +886,15 @@ textarea { resize: vertical; }
 }
 .board-hint { margin: 0 0 16px; }
 
-.kanban-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  margin: 0 0 10px;
+.kanban-filters {
+  margin-bottom: 12px;
 }
-.kanban-search-label {
-  flex: 1;
-  min-width: 220px;
-  margin: 0;
-  font-weight: 500;
+.kanban-filters .filters-row:empty,
+.kanban-filters .filters-row:has(#kanban-search-hint:empty) {
+  display: none;
 }
-.kanban-search-label input {
-  width: 100%;
-  margin-top: 0;
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
+.kanban-filters #kanban-search-hint:not(:empty) {
+  font-size: 13px;
 }
 
 .kanban {
