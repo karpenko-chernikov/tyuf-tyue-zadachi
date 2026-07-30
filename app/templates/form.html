@@ -123,31 +123,32 @@
       value="{% if f.video_url is defined %}{{ f.video_url }}{% elif task %}{{ task.video_url or '' }}{% else %}{{ p.video_url or '' }}{% endif %}">
 
     {% set show_formulirovka = status_val == 'formulirovka' or status_val == 'metodkom' or status_val == 'igraetsya' %}
-    <div id="formulirovka-fields" class="{% if not show_formulirovka %}hidden{% endif %}">
+    <div id="formulirovka-fields" class="stage-fields {% if not show_formulirovka %}hidden{% endif %}{% if pending_status in ('formulirovka', 'metodkom') %} stage-fields-focus{% endif %}">
+      <h3 class="stage-fields-title">Формулировка перед отправкой</h3>
       {% set ft_val = f.formulirovka_title if f.formulirovka_title is defined else (task.formulirovka_title if task and task.formulirovka_title else (task.title if task else '')) %}
-      <label>Название для отправки {% if status_val == 'formulirovka' %}*{% endif %}
+      <label>Название для отправки {% if status_val in ('formulirovka', 'metodkom') %}*{% endif %}
         <input type="text" name="formulirovka_title" id="formulirovka-title-input"
           value="{{ ft_val or '' }}"
-          placeholder="Как назовём задачу при отправке"
-          {% if status_val == 'formulirovka' %}required{% endif %}>
-        <span class="hint">Отдельное короткое название на этапе формулировки. Для старых задач можно начать с текущего «Название».</span>
+          placeholder="Как назовём задачу при отправке на турнир"
+          {% if status_val in ('formulirovka', 'metodkom') %}required{% endif %}>
+        <span class="hint">Это название для отправленной формулировки — не путать с обычным «Название» идеи выше.</span>
       </label>
-      <label>Формулировка перед отправлением {% if status_val == 'formulirovka' %}*{% endif %}
+      <label>Формулировка перед отправлением {% if status_val in ('formulirovka', 'metodkom') %}*{% endif %}
         <textarea name="formulirovka" rows="6" id="formulirovka-input"
-          {% if status_val == 'formulirovka' %}required{% endif %}>{% if f.formulirovka is defined %}{{ f.formulirovka }}{% elif task %}{{ task.formulirovka or '' }}{% endif %}</textarea>
+          {% if status_val in ('formulirovka', 'metodkom') %}required{% endif %}>{% if f.formulirovka is defined %}{{ f.formulirovka }}{% elif task %}{{ task.formulirovka or '' }}{% endif %}</textarea>
       </label>
     </div>
 
     {% set show_igraetsya = status_val == 'igraetsya' %}
-    <div id="igraetsya-fields" class="{% if not show_igraetsya %}hidden{% endif %}">
-      <h3>Играется в турнире</h3>
+    <div id="igraetsya-fields" class="stage-fields {% if not show_igraetsya %}hidden{% endif %}{% if pending_status == 'igraetsya' %} stage-fields-focus{% endif %}">
+      <h3 class="stage-fields-title">Играется в турнире</h3>
       {% set it_val = f.igraetsya_title if f.igraetsya_title is defined else (task.igraetsya_title if task and task.igraetsya_title else (task.formulirovka_title if task and task.formulirovka_title else (task.title if task else ''))) %}
       <label>Название в итоговом списке {% if status_val == 'igraetsya' %}*{% endif %}
         <input type="text" name="igraetsya_title" id="igraetsya-title-input"
           value="{{ it_val or '' }}"
-          placeholder="Как задача войдёт в итоговый список"
+          placeholder="Как задача войдёт в итоговый список турнира"
           {% if status_val == 'igraetsya' %}required{% endif %}>
-        <span class="hint">Название для финального списка турнира. Можно взять из «Названия для отправки» или поправить.</span>
+        <span class="hint">Название принятой задачи в финальном списке. Может отличаться от «Названия для отправки».</span>
       </label>
       <label>Итоговая формулировка {% if status_val == 'igraetsya' %}*{% endif %}
         <textarea name="itogovaya_formulirovka" rows="6" id="itogovaya-input"
@@ -164,7 +165,7 @@
           </select>
         </label>
         <label>Год *
-          <input type="number" name="turnir_year"
+          <input type="number" name="turnir_year" id="turnir-year-regular"
             value="{% if f.turnir_year is defined %}{{ f.turnir_year }}{% elif task and task.turnir_year %}{{ task.turnir_year }}{% endif %}">
         </label>
         <label>Номер задачи *
@@ -183,8 +184,8 @@
           </select>
         </label>
         <label>Год *
-          <input type="number" name="turnir_year"
-            value="{% if f.turnir_year is defined %}{{ f.turnir_year }}{% elif task and task.turnir_year %}{{ task.turnir_year }}{% endif %}">
+          <input type="number" name="turnir_year_kk" id="turnir-year-kk"
+            value="{% if f.turnir_year is defined %}{{ f.turnir_year }}{% elif f.turnir_year_kk is defined %}{{ f.turnir_year_kk }}{% elif task and task.turnir_year %}{{ task.turnir_year }}{% endif %}">
         </label>
       </div>
     </div>
@@ -246,24 +247,39 @@ function syncFields() {
   const st = status.value;
   const showForm = st === 'formulirovka' || st === 'metodkom' || st === 'igraetsya';
   const showIgra = st === 'igraetsya';
+  const needFormTitle = st === 'formulirovka' || st === 'metodkom';
 
   formulirovkaFields.classList.toggle('hidden', !showForm);
-  if (formulirovkaInput) formulirovkaInput.required = st === 'formulirovka';
-  if (formulirovkaTitleInput) formulirovkaTitleInput.required = st === 'formulirovka';
+  if (formulirovkaInput) formulirovkaInput.required = needFormTitle;
+  if (formulirovkaTitleInput) {
+    formulirovkaTitleInput.required = needFormTitle;
+    if (needFormTitle && !formulirovkaTitleInput.value.trim()) {
+      const titleEl = document.querySelector('#task-form [name="title"]');
+      if (titleEl && titleEl.value.trim()) formulirovkaTitleInput.value = titleEl.value.trim();
+    }
+  }
 
   igraetsyaFields.classList.toggle('hidden', !showIgra);
   igraetsyaRegular.classList.toggle('hidden', isKk);
   igraetsyaKk.classList.toggle('hidden', !isKk);
   if (itogovayaInput) itogovayaInput.required = showIgra;
-  if (igraetsyaTitleInput) igraetsyaTitleInput.required = showIgra;
+  if (igraetsyaTitleInput) {
+    igraetsyaTitleInput.required = showIgra;
+    if (showIgra && !igraetsyaTitleInput.value.trim()) {
+      const src = (formulirovkaTitleInput && formulirovkaTitleInput.value.trim())
+        || (document.querySelector('#task-form [name="title"]') || {}).value
+        || '';
+      if (src) igraetsyaTitleInput.value = src.trim();
+    }
+  }
 
   igraetsyaRegular.querySelectorAll('input, select').forEach(el => {
     el.disabled = isKk || !showIgra;
-    if ('required' in el) el.required = false;
+    if ('required' in el) el.required = !isKk && showIgra;
   });
   igraetsyaKk.querySelectorAll('input, select').forEach(el => {
     el.disabled = !isKk || !showIgra;
-    if ('required' in el) el.required = false;
+    if ('required' in el) el.required = isKk && showIgra;
   });
 }
 
@@ -273,9 +289,19 @@ document.querySelectorAll('input[name="tag_slugs"]').forEach((el) => {
 status.addEventListener('change', syncFields);
 syncFields();
 
+const focusBlock = document.querySelector('.stage-fields-focus');
+if (focusBlock) {
+  setTimeout(() => {
+    focusBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const first = focusBlock.querySelector('input:not([disabled]), textarea:not([disabled])');
+    if (first && !first.value.trim()) first.focus();
+  }, 80);
+}
+
 const taskForm = document.getElementById('task-form');
 if (taskForm) {
   taskForm.addEventListener('submit', (e) => {
+    syncFields();
     const checked = taskForm.querySelectorAll('input[name="tag_slugs"]:checked');
     if (!checked.length) {
       e.preventDefault();
@@ -289,6 +315,11 @@ if (taskForm) {
     }
     if (!taskForm.checkValidity()) {
       e.preventDefault();
+      const bad = taskForm.querySelector(':invalid');
+      if (bad) {
+        const block = bad.closest('.stage-fields, .field-block, label') || bad;
+        block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       taskForm.reportValidity();
       return;
     }

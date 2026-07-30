@@ -758,14 +758,19 @@ def api_set_status(
             detail="Статус «Методкомиссия» недоступен для тегов этой задачи",
         )
 
-    # Для «формулировка» / «играется» статус меняем только если поля уже заполнены.
-    # Иначе открываем форму — без сохранения статус не меняется (Отмена = остаётся как было).
+    # Для статусов с обязательными полями — сначала форма, статус ещё не меняем.
     needs_edit = False
     if status == Status.FORMULIROVKA.value:
         if not (task.formulirovka or "").strip() or not (task.formulirovka_title or "").strip():
             needs_edit = True
+    elif status == Status.METODKOM.value:
+        if not (task.formulirovka or "").strip() or not (task.formulirovka_title or "").strip():
+            needs_edit = True
     elif status == Status.IGRAETSYA.value:
         if not (task.itogovaya_formulirovka or "").strip() or not (task.igraetsya_title or "").strip():
+            needs_edit = True
+        elif not (task.formulirovka or "").strip() or not (task.formulirovka_title or "").strip():
+            # на этап «играется» тоже нужны данные формулировки
             needs_edit = True
         elif task_is_kapitanka(task):
             if not task.etap_kk or not task.turnir_year:
@@ -986,17 +991,28 @@ def _build_task_from_form(
     if status == Status.METODKOM.value and not allow_metodkom:
         raise ValueError("Статус «Отправлена в методкомиссию» недоступен для выбранных тегов")
 
-    if status == Status.FORMULIROVKA.value:
+    if status == Status.FORMULIROVKA.value or status == Status.METODKOM.value:
+        if not formulirovka_title.strip():
+            formulirovka_title = title.strip()
         if not formulirovka.strip():
             raise ValueError("Заполните «Формулировку перед отправлением»")
         if not formulirovka_title.strip():
-            raise ValueError("Укажите «Название для отправки»")
+            raise ValueError("Укажите «Название для отправки» (или заполните обычное «Название» задачи)")
 
     if status == Status.IGRAETSYA.value:
+        if not formulirovka_title.strip():
+            formulirovka_title = title.strip()
+        if not igraetsya_title.strip():
+            igraetsya_title = formulirovka_title.strip() or title.strip()
         if not itogovaya_formulirovka.strip():
             raise ValueError("Заполните «Итоговую формулировку»")
         if not igraetsya_title.strip():
             raise ValueError("Укажите «Название в итоговом списке»")
+        if not formulirovka.strip():
+            # если формулировку ещё не заводили — копируем итоговую как стартовую
+            formulirovka = itogovaya_formulirovka
+        if not formulirovka_title.strip():
+            formulirovka_title = igraetsya_title
         if is_kk:
             if not etap_kk.strip() or not turnir_year.strip():
                 raise ValueError("Для Капитанки укажите этап (полуфинал/финал) и год")
@@ -1108,6 +1124,7 @@ async def create_task(
     igraetsya_title: str = Form(""),
     turnir: str = Form(""),
     turnir_year: str = Form(""),
+    turnir_year_kk: str = Form(""),
     task_number: str = Form(""),
     etap_kk: str = Form(""),
     comment_authors: list[str] = Form(default=[]),
@@ -1117,6 +1134,8 @@ async def create_task(
     user = login_required(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+
+    year_val = turnir_year_kk.strip() or turnir_year.strip()
 
     try:
         task = _build_task_from_form(
@@ -1135,7 +1154,7 @@ async def create_task(
             formulirovka,
             itogovaya_formulirovka,
             turnir,
-            turnir_year,
+            year_val,
             task_number,
             etap_kk,
             formulirovka_title=formulirovka_title,
@@ -1188,7 +1207,7 @@ async def create_task(
             "itogovaya_formulirovka": itogovaya_formulirovka,
             "igraetsya_title": igraetsya_title,
             "turnir": turnir,
-            "turnir_year": turnir_year,
+            "turnir_year": year_val,
             "task_number": task_number,
             "etap_kk": etap_kk,
             "comments": comments_draft,
@@ -1287,13 +1306,18 @@ def edit_task_page(
     hint = None
     if target == Status.FORMULIROVKA.value:
         hint = (
-            "Заполните «Название для отправки» и «Формулировку перед отправлением», "
+            "Заполните блок ниже: «Название для отправки» и «Формулировку перед отправлением», "
             "затем «Сохранить». «Отмена» — статус не изменится."
+        )
+    elif target == Status.METODKOM.value:
+        hint = (
+            "Для методкомиссии нужны «Название для отправки» и «Формулировка перед отправлением». "
+            "Заполните и нажмите «Сохранить»."
         )
     elif target == Status.IGRAETSYA.value:
         hint = (
-            "Заполните «Название в итоговом списке», «Итоговую формулировку» и данные турнира, "
-            "затем «Сохранить». «Отмена» — статус не изменится."
+            "Заполните блок «Играется в турнире»: «Название в итоговом списке», "
+            "итоговую формулировку и данные турнира, затем «Сохранить»."
         )
 
     first_tag = sorted(task.tags, key=lambda t: (t.sort_order, t.name))[0] if task.tags else None
@@ -1339,6 +1363,7 @@ async def update_task(
     igraetsya_title: str = Form(""),
     turnir: str = Form(""),
     turnir_year: str = Form(""),
+    turnir_year_kk: str = Form(""),
     task_number: str = Form(""),
     etap_kk: str = Form(""),
 ):
@@ -1349,6 +1374,8 @@ async def update_task(
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    year_val = turnir_year_kk.strip() or turnir_year.strip()
 
     try:
         before = snapshot_task(task)
@@ -1368,7 +1395,7 @@ async def update_task(
             formulirovka,
             itogovaya_formulirovka,
             turnir,
-            turnir_year,
+            year_val,
             task_number,
             etap_kk,
             formulirovka_title=formulirovka_title,
@@ -1403,7 +1430,7 @@ async def update_task(
             "itogovaya_formulirovka": itogovaya_formulirovka,
             "igraetsya_title": igraetsya_title,
             "turnir": turnir,
-            "turnir_year": turnir_year,
+            "turnir_year": year_val,
             "task_number": task_number,
             "etap_kk": etap_kk,
         }
@@ -1448,7 +1475,7 @@ async def update_task(
             "itogovaya_formulirovka": itogovaya_formulirovka,
             "igraetsya_title": igraetsya_title,
             "turnir": turnir,
-            "turnir_year": turnir_year,
+            "turnir_year": year_val,
             "task_number": task_number,
             "etap_kk": etap_kk,
         }

@@ -64,19 +64,17 @@ def export_tasks_txt(db: Session, tasks=None) -> str:
             for a in task_files:
                 lines.append(f"- {a.filename}")
 
-        if task.formulirovka:
+        if task.formulirovka or task.formulirovka_title:
             lines.append("")
             lines.append("Формулировка перед отправлением:")
-            if task.formulirovka_title:
-                lines.append(f"Название для отправки: {task.formulirovka_title}")
-            lines.append(task.formulirovka)
+            lines.append(f"Название для отправки: {task.formulirovka_title or '—'}")
+            lines.append(task.formulirovka or "—")
 
-        if task.itogovaya_formulirovka:
+        if task.itogovaya_formulirovka or task.igraetsya_title:
             lines.append("")
             lines.append("Итоговая формулировка:")
-            if task.igraetsya_title:
-                lines.append(f"Название в итоговом списке: {task.igraetsya_title}")
-            lines.append(task.itogovaya_formulirovka)
+            lines.append(f"Название в итоговом списке: {task.igraetsya_title or '—'}")
+            lines.append(task.itogovaya_formulirovka or "—")
 
         if task.sources:
             lines.append("")

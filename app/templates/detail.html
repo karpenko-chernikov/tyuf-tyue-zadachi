@@ -28,6 +28,20 @@
 <div class="alert">{{ error }}</div>
 {% endif %}
 
+{% set missing_ft = task.status in ('formulirovka', 'metodkom', 'igraetsya') and (not task.formulirovka_title or not task.formulirovka) %}
+{% set missing_it = task.status == 'igraetsya' and (not task.igraetsya_title or not task.itogovaya_formulirovka) %}
+{% if missing_it %}
+<div class="alert">
+  Не заполнено «Название в итоговом списке» (или итоговая формулировка).
+  <a href="/tasks/{{ task.id }}/edit?pending_status=igraetsya"><strong>Заполнить сейчас</strong></a>
+</div>
+{% elif missing_ft %}
+<div class="alert">
+  Не заполнено «Название для отправки» (или формулировка перед отправлением).
+  <a href="/tasks/{{ task.id }}/edit?pending_status={{ task.status }}"><strong>Заполнить сейчас</strong></a>
+</div>
+{% endif %}
+
 <div class="meta-grid detail-meta">
   <div><span class="label">Теги</span>
     <div class="tag-chips">

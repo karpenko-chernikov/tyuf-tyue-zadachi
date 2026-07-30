@@ -35,12 +35,13 @@
     <div class="kanban-list" data-status="{{ st.value }}">
     {% for task in tasks_by_status.get(st.value, []) %}
       {% set mc = media_counts.get(task.id) %}
-      {% set missing_ft = task.status in ('formulirovka', 'metodkom', 'igraetsya') and not task.formulirovka_title %}
-      {% set missing_it = task.status == 'igraetsya' and not task.igraetsya_title %}
+      {% set missing_ft = task.status in ('formulirovka', 'metodkom', 'igraetsya') and (not task.formulirovka_title or not task.formulirovka) %}
+      {% set missing_it = task.status == 'igraetsya' and (not task.igraetsya_title or not task.itogovaya_formulirovka) %}
+      {% set needs_fill = missing_ft or missing_it %}
       <article
         class="kanban-card {% if task.status == 'archived' %}kanban-card-archived{% endif %}"
         data-id="{{ task.id }}"
-        data-href="/tasks/{{ task.id }}"
+        data-href="{% if needs_fill %}/tasks/{{ task.id }}/edit?pending_status={{ task.status }}{% else %}/tasks/{{ task.id }}{% endif %}"
         data-search="{{ (format_idea_label(task) ~ ' ' ~ (task.title or '') ~ ' ' ~ (task.formulirovka_title or '') ~ ' ' ~ (task.igraetsya_title or '') ~ ' ' ~ (task.author or '') ~ ' ' ~ (task.condition or ''))|lower }}"
         draggable="false"
         role="link"
@@ -68,8 +69,10 @@
           {% if mc.files %}<span>файлы {{ mc.files }}</span>{% endif %}
         </div>
         {% endif %}
-        {% if missing_ft or missing_it %}
-        <div class="kanban-card-warn">нужно название{% if missing_it %} в списке{% elif missing_ft %} для отправки{% endif %}</div>
+        {% if missing_it %}
+        <div class="kanban-card-warn">нужно «Название в итоговом списке» — откройте редактирование</div>
+        {% elif missing_ft %}
+        <div class="kanban-card-warn">нужно «Название для отправки» — откройте редактирование</div>
         {% endif %}
         <div class="kanban-card-meta">
           {% if task.author %}
@@ -137,8 +140,15 @@ async function postStatus(taskId, status, confirm) {
 }
 
 document.querySelectorAll('.kanban-card').forEach((card) => {
-  const open = () => {
-    if (card.dataset.dragging === '1') return;
+  const open = (e) => {
+    // После drag браузер шлёт «ghost click» — не открываем карточку
+    if (card.dataset.dragging === '1' || card.dataset.navLock === '1') {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     const href = card.dataset.href;
     if (href) window.location = href;
   };
@@ -146,10 +156,20 @@ document.querySelectorAll('.kanban-card').forEach((card) => {
   card.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      open();
+      open(e);
     }
   });
 });
+
+function lockCardClicks(card, ms) {
+  card.dataset.dragging = '1';
+  card.dataset.navLock = '1';
+  clearTimeout(card._dragUnlock);
+  card._dragUnlock = setTimeout(() => {
+    card.dataset.dragging = '0';
+    card.dataset.navLock = '0';
+  }, ms);
+}
 
 document.querySelectorAll('.kanban-list').forEach(list => {
   new Sortable(list, {
@@ -165,7 +185,7 @@ document.querySelectorAll('.kanban-list').forEach(list => {
     filter: '[hidden]',
     preventOnFilter: true,
     onStart: (evt) => {
-      if (evt.item) evt.item.dataset.dragging = '1';
+      if (evt.item) lockCardClicks(evt.item, 800);
     },
     onEnd: async (evt) => {
       const card = evt.item;
@@ -173,7 +193,8 @@ document.querySelectorAll('.kanban-list').forEach(list => {
       const newStatus = evt.to.dataset.status;
       const oldStatus = evt.from.dataset.status;
 
-      setTimeout(() => { card.dataset.dragging = '0'; }, 50);
+      // Держим блокировку дольше, пока идёт запрос / редирект
+      lockCardClicks(card, 1200);
 
       refreshKanbanCounts();
       if (newStatus === oldStatus) return;
@@ -187,7 +208,8 @@ document.querySelectorAll('.kanban-list').forEach(list => {
         }
         if (data.needs_edit && data.edit_url) {
           revertCard(evt, card);
-          window.location = data.edit_url;
+          card.dataset.navLock = '1';
+          window.location.assign(data.edit_url);
           return;
         }
         if (data.needs_confirm) {
