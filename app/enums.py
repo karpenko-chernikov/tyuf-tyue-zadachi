@@ -104,7 +104,12 @@ def normalize_author(name: str | None, *, default: str | None = None) -> str:
     key = " ".join(raw.lower().replace("ё", "е").split())
     if key in AUTHOR_ALIASES:
         return AUTHOR_ALIASES[key]
+    # Нечёткие совпадения только для полных имён (с фамилией).
+    # Иначе «Артем Сухов» ошибочно схлопывался в «Артем Голомолзин»
+    # из‑за алиаса «артем».
     for alias, canonical in AUTHOR_ALIASES.items():
+        if " " not in alias:
+            continue
         if key.startswith(alias) or alias.startswith(key):
             if len(key) >= 4:
                 return canonical
