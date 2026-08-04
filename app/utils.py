@@ -3,7 +3,11 @@ import re
 from datetime import datetime
 
 IDEA_RE = re.compile(r"(?:Идея|идея)\s*(?:№|#|номер)?\s*(\d+)", re.IGNORECASE)
-KAPITANY_RE = re.compile(r"(?:на\s+)?кк|конкурс\s+капитанов|задание\s+на\s+кк", re.IGNORECASE)
+# «кк» только как отдельное слово — иначе ловит «аккуратны» и т.п.
+KAPITANY_RE = re.compile(
+    r"\b(?:на\s+)?кк\b|конкурс\s+капитанов|задание\s+на\s+кк",
+    re.IGNORECASE,
+)
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 # Короткая строка после «Идея N» — это название, а не условие
